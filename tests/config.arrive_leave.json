@@ -1,0 +1,5 @@
+{
+  "cameras": [
+    {"name": "Test Cam", "url": "tests/arrive_leave.mp4", "loop": true}
+  ]
+}

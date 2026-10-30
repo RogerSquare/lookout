@@ -1,0 +1,20 @@
+# Lookout Hub for Docker Desktop on Windows and macOS, where containers can't share the
+# computer's network. The installer fills in LOOKOUT_PUBLIC_HOST (this computer's address on
+# your network) so the apps know where to find the hub. Without Bonjour here, pair the apps by
+# scanning the QR code on the setup page.
+#
+# Start it in the folder this file is in:   docker compose -f compose.desktop.yml up -d
+services:
+  hub:
+    image: ghcr.io/rogersquare/lookout-hub:latest
+    container_name: lookout-hub
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+      - "8766:8766"
+      - "8555:8555"
+    volumes:
+      - ./data:/data
+    environment:
+      - LOOKOUT_PUBLIC_HOST=${LOOKOUT_PUBLIC_HOST:?set LOOKOUT_PUBLIC_HOST to this computer's IP address}
+      - TZ=${TZ:-UTC}

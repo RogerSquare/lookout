@@ -1,0 +1,489 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		6902C2E5E0A2402027143B51 /* LookoutWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 98DFF1513A61C880DB1FAA52 /* LookoutWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		049F828002E7E3F6E8536094 /* LookoutWatchWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 65859CE04BF1826752C06D89 /* LookoutWatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		98FAB863C3997DCD46DF2DC5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 07015BCF3C680886983B6884 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A37D7E5627B390E88590117E;
+			remoteInfo = LookoutWatch;
+		};
+		E4ED43E1CE16DBE403D121BB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 07015BCF3C680886983B6884 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 674BFA94F852AF614FEBDB76;
+			remoteInfo = LookoutWatchWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A5FF24E56F8584F782FFCE35 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				6902C2E5E0A2402027143B51 /* LookoutWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C2365EE9BD93C4CD17673D7A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				049F828002E7E3F6E8536094 /* LookoutWatchWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		9417E2FCFD3F4CD33DFB3621 /* Lookout.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lookout.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		98DFF1513A61C880DB1FAA52 /* LookoutWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LookoutWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		209628789525C4F6E86CACDE /* Lookout-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Lookout-Info.plist"; sourceTree = "<group>"; };
+		A35810139B9D18F90706A3BC /* LookoutWatch-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "LookoutWatch-Info.plist"; sourceTree = "<group>"; };
+		65859CE04BF1826752C06D89 /* LookoutWatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LookoutWatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		A51E4ADE3A5C33EFBCF22AEE /* Shared */ = {isa = PBXFileSystemSynchronizedRootGroup; path = Shared; sourceTree = "<group>"; };
+		9BEC71E7D5393C85B284C3A8 /* Lookout */ = {isa = PBXFileSystemSynchronizedRootGroup; path = Lookout; sourceTree = "<group>"; };
+		F41F0CDE6FB28B9E83F4C74F /* LookoutWatch */ = {isa = PBXFileSystemSynchronizedRootGroup; path = LookoutWatch; sourceTree = "<group>"; };
+		7E3BA8BD0111E4B0E70D763C /* LookoutWatchWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; path = LookoutWatchWidget; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0A914019F088E7AB3DDC4402 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ABBA3A4128E7B8D1CE8E8DD3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2D674E8CBA4AE39F6A690A99 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		239DB0063A7A6D06414932A6 = {
+			isa = PBXGroup;
+			children = (
+				A51E4ADE3A5C33EFBCF22AEE /* Shared */,
+				9BEC71E7D5393C85B284C3A8 /* Lookout */,
+				F41F0CDE6FB28B9E83F4C74F /* LookoutWatch */,
+				7E3BA8BD0111E4B0E70D763C /* LookoutWatchWidget */,
+				209628789525C4F6E86CACDE /* Lookout-Info.plist */,
+				A35810139B9D18F90706A3BC /* LookoutWatch-Info.plist */,
+				118B32849E5E3B14974B2995 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		118B32849E5E3B14974B2995 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9417E2FCFD3F4CD33DFB3621 /* Lookout.app */,
+				98DFF1513A61C880DB1FAA52 /* LookoutWatch.app */,
+				65859CE04BF1826752C06D89 /* LookoutWatchWidget.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		66706CD8C665543E5E129DD1 /* Lookout */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 14B8B222110BEFC4EBE7FDAB /* Build configuration list for PBXNativeTarget "Lookout" */;
+			buildPhases = (
+				C1C1DB7BBE1674C81EFA085A /* Sources */,
+				0A914019F088E7AB3DDC4402 /* Frameworks */,
+				D689B54E0D19DB64694B0BC6 /* Resources */,
+				A5FF24E56F8584F782FFCE35 /* Embed Watch Content */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				899531C8C69AFE71CE5180EB /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A51E4ADE3A5C33EFBCF22AEE /* Shared */,
+				9BEC71E7D5393C85B284C3A8 /* Lookout */,
+			);
+			name = Lookout;
+			productName = Lookout;
+			productReference = 9417E2FCFD3F4CD33DFB3621 /* Lookout.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A37D7E5627B390E88590117E /* LookoutWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1380250C6F185980B9E72B64 /* Build configuration list for PBXNativeTarget "LookoutWatch" */;
+			buildPhases = (
+				5DECDA242898EEA02085989B /* Sources */,
+				ABBA3A4128E7B8D1CE8E8DD3 /* Frameworks */,
+				6B4B6A9679799AA27E687205 /* Resources */,
+							C2365EE9BD93C4CD17673D7A /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+							C1B7CEF4F67BDEAB1CC6355A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A51E4ADE3A5C33EFBCF22AEE /* Shared */,
+				F41F0CDE6FB28B9E83F4C74F /* LookoutWatch */,
+			);
+			name = LookoutWatch;
+			productName = LookoutWatch;
+			productReference = 98DFF1513A61C880DB1FAA52 /* LookoutWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		674BFA94F852AF614FEBDB76 /* LookoutWatchWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5B847F7094A117688D56487D /* Build configuration list for PBXNativeTarget "LookoutWatchWidget" */;
+			buildPhases = (
+				34813F83751C0C9DFA435D6B /* Sources */,
+				2D674E8CBA4AE39F6A690A99 /* Frameworks */,
+				9E73B92022F0B3F69655B6F4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A51E4ADE3A5C33EFBCF22AEE /* Shared */,
+				7E3BA8BD0111E4B0E70D763C /* LookoutWatchWidget */,
+			);
+			name = LookoutWatchWidget;
+			productName = LookoutWatchWidget;
+			productReference = 65859CE04BF1826752C06D89 /* LookoutWatchWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		07015BCF3C680886983B6884 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2710;
+				LastUpgradeCheck = 2710;
+			};
+			buildConfigurationList = E239F13121C1BA1B4F66D197 /* Build configuration list for PBXProject "Lookout" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 239DB0063A7A6D06414932A6;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 118B32849E5E3B14974B2995 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				66706CD8C665543E5E129DD1 /* Lookout */,
+				A37D7E5627B390E88590117E /* LookoutWatch */,
+							674BFA94F852AF614FEBDB76 /* LookoutWatchWidget */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D689B54E0D19DB64694B0BC6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6B4B6A9679799AA27E687205 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9E73B92022F0B3F69655B6F4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C1C1DB7BBE1674C81EFA085A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5DECDA242898EEA02085989B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		34813F83751C0C9DFA435D6B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		899531C8C69AFE71CE5180EB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A37D7E5627B390E88590117E /* LookoutWatch */;
+			targetProxy = 98FAB863C3997DCD46DF2DC5 /* PBXContainerItemProxy */;
+		};
+		C1B7CEF4F67BDEAB1CC6355A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 674BFA94F852AF614FEBDB76 /* LookoutWatchWidget */;
+			targetProxy = E4ED43E1CE16DBE403D121BB /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0D2A8F8BBD0A3B715CAE99AB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = NKQFLG7YYR;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MARKETING_VERSION = 1.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BB90732DE37D3071B3F78E4F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = NKQFLG7YYR;
+				MARKETING_VERSION = 1.0;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		552B6E99E516E6139BF743CE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Lookout-Info.plist";
+				CODE_SIGN_ENTITLEMENTS = Lookout.entitlements;
+				INFOPLIST_KEY_CFBundleDisplayName = Lookout;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.rogersquare.lookout;
+				PRODUCT_NAME = Lookout;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		D43DE4BDFCB7FE8424DB6A17 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Lookout-Info.plist";
+				CODE_SIGN_ENTITLEMENTS = Lookout.entitlements;
+				INFOPLIST_KEY_CFBundleDisplayName = Lookout;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.rogersquare.lookout;
+				PRODUCT_NAME = Lookout;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B439078B5FD2EE6C1D89EC51 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "LookoutWatch-Info.plist";
+				CODE_SIGN_ENTITLEMENTS = LookoutWatch.entitlements;
+				INFOPLIST_KEY_CFBundleDisplayName = Lookout;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.rogersquare.lookout;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.rogersquare.lookout.watchkitapp;
+				PRODUCT_NAME = LookoutWatch;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Debug;
+		};
+		18D6029F8171C9A41A793325 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "LookoutWatch-Info.plist";
+				CODE_SIGN_ENTITLEMENTS = LookoutWatch.entitlements;
+				INFOPLIST_KEY_CFBundleDisplayName = Lookout;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = dev.rogersquare.lookout;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.rogersquare.lookout.watchkitapp;
+				PRODUCT_NAME = LookoutWatch;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Release;
+		};
+		0D5EFC7546D192F38F7EE200 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "LookoutWatchWidget-Info.plist";
+				CODE_SIGN_ENTITLEMENTS = LookoutWatchWidget.entitlements;
+				INFOPLIST_KEY_CFBundleDisplayName = Lookout;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.rogersquare.lookout.watchkitapp.widget;
+				PRODUCT_NAME = LookoutWatchWidget;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Debug;
+		};
+		5A93C8FA3060920ABD123C53 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "LookoutWatchWidget-Info.plist";
+				CODE_SIGN_ENTITLEMENTS = LookoutWatchWidget.entitlements;
+				INFOPLIST_KEY_CFBundleDisplayName = Lookout;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.rogersquare.lookout.watchkitapp.widget;
+				PRODUCT_NAME = LookoutWatchWidget;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		E239F13121C1BA1B4F66D197 /* Build configuration list for PBXProject "Lookout" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0D2A8F8BBD0A3B715CAE99AB /* Debug */,
+				BB90732DE37D3071B3F78E4F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		14B8B222110BEFC4EBE7FDAB /* Build configuration list for PBXNativeTarget "Lookout" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				552B6E99E516E6139BF743CE /* Debug */,
+				D43DE4BDFCB7FE8424DB6A17 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1380250C6F185980B9E72B64 /* Build configuration list for PBXNativeTarget "LookoutWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B439078B5FD2EE6C1D89EC51 /* Debug */,
+				18D6029F8171C9A41A793325 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5B847F7094A117688D56487D /* Build configuration list for PBXNativeTarget "LookoutWatchWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0D5EFC7546D192F38F7EE200 /* Debug */,
+				5A93C8FA3060920ABD123C53 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 07015BCF3C680886983B6884 /* Project object */;
+}

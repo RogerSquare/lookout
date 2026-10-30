@@ -1,0 +1,19 @@
+{
+  "cameras": [
+    {
+      "name": "Kitchen Cam",
+      "url": "rtsp://admin:PASSWORD@192.168.1.30:8554/video1_unicast"
+    }
+  ],
+  "model": "yolo11s.pt",
+  "detect_fps": 5,
+  "confidence": 0.5,
+  "trigger_hits": 2,
+  "trigger_window": 3,
+  "hide_after_seconds": 15,
+  "popup_width": 480,
+  "enlarged_width": 960,
+  "margin": 24,
+  "sound": "C:/Windows/Media/Windows Notify Calendar.wav",
+  "hub_url": "http://192.168.1.20:8765"
+}

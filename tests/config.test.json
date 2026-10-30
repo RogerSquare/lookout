@@ -1,0 +1,5 @@
+{
+  "cameras": [
+    {"name": "Test Cam", "url": "tests/people.jpg", "loop": true}
+  ]
+}

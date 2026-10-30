@@ -1,0 +1,11 @@
+# Never send secrets or state into an image build
+secrets/
+data/
+.env
+config.json
+config.json.*
+*.bak*
+testmedia/
+tests/
+__pycache__/
+models/

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Person alerts from the Lookout Hub. Export for TestFlight switches this to production. -->
+	<key>aps-environment</key>
+	<string>development</string>
+	<!-- Doorbell-style alerts: break through Focus and notification summaries -->
+	<key>com.apple.developer.usernotifications.time-sensitive</key>
+	<true/>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)dev.rogersquare.lookout.shared</string>
+	</array>
+</dict>
+</plist>

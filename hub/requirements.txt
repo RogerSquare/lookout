@@ -1,0 +1,8 @@
+aiohttp
+av
+numpy
+pillow
+httpx[http2]
+pyjwt[crypto]
+zeroconf
+segno

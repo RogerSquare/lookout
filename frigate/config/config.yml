@@ -1,0 +1,72 @@
+# Frigate 0.18 config. See https://docs.frigate.video/configuration/reference
+mqtt:
+  enabled: false
+
+detectors:
+  ov:
+    type: openvino
+    device: GPU
+
+# Same Ultralytics YOLO11s ONNX export the Lookout Hub uses (640x640, 1x84x8400 output)
+model:
+  model_type: yolo-generic
+  width: 640
+  height: 640
+  input_tensor: nchw
+  input_dtype: float
+  path: /config/model_cache/yolo11s.onnx
+  labelmap_path: /labelmap/coco-80.txt
+
+ffmpeg:
+  hwaccel_args: preset-vaapi
+  output_args:
+    record: preset-record-generic   # video only: the cameras send PCM audio, which MP4 can't hold
+
+detect:
+  enabled: true
+
+objects:
+  track: [person]
+
+record:
+  enabled: true
+  continuous:
+    days: 7
+  alerts:
+    retain:
+      days: 30
+  detections:
+    retain:
+      days: 30
+
+snapshots:
+  enabled: true
+  retain:
+    default: 30
+
+cameras:
+  kitchen:            # Wyze V3 on wz_mini, mounted facing the front door
+    ffmpeg:
+      inputs:
+        - path: rtsp://10.0.0.127:8555/kitchen
+          roles: [record]
+        - path: rtsp://10.0.0.127:8555/kitchen_sd
+          roles: [detect]
+    detect:
+      width: 640
+      height: 360
+      fps: 5
+    objects:
+      filters:
+        person:
+          min_area: 3000   # ~25% of the frame height: ignore people on the street below
+  bedroom:            # Wyze Pan V3 via docker-wyze-bridge
+    ffmpeg:
+      inputs:
+        - path: rtsp://10.0.0.127:8555/bedroom
+          roles: [record, detect]
+    detect:
+      width: 640
+      height: 360
+      fps: 5
+version: 0.18-0

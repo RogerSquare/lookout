@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Lookout Hub</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%2314202B'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23A87B2F' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23E9EEF2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div id="auth" class="auth" hidden>
+  <form class="auth-card" id="auth-form" autocomplete="on">
+    <div class="mark" aria-hidden="true"><span></span></div>
+    <h1 id="auth-title">Lookout Hub</h1>
+    <p id="auth-lede" class="muted"></p>
+    <label id="code-field" hidden>Setup code
+      <input id="code" name="code" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX">
+      <small class="muted">Printed in the hub's log when it first starts. Run <code>docker logs lookout-hub</code> to see it.</small>
+    </label>
+    <label>Password
+      <input id="password" name="password" type="password" autocomplete="current-password" required minlength="8">
+    </label>
+    <label id="confirm-field" hidden>Repeat password
+      <input id="confirm" type="password" autocomplete="new-password" minlength="8">
+    </label>
+    <p id="auth-error" class="error" role="alert"></p>
+    <button class="primary" id="auth-submit" type="submit">Sign in</button>
+  </form>
+</div>
+
+<div id="app" class="app" hidden>
+  <nav class="rail" aria-label="Sections">
+    <div class="brand"><div class="mark small" aria-hidden="true"><span></span></div><b>Lookout</b></div>
+    <a href="#cameras" data-view="cameras">Cameras</a>
+    <a href="#detection" data-view="detection">Detection</a>
+    <a href="#alerts" data-view="alerts">Alerts</a>
+    <a href="#apps" data-view="apps">Apps</a>
+    <a href="#hub" data-view="hub">Hub</a>
+    <div class="rail-foot muted" id="rail-status"></div>
+  </nav>
+
+  <main>
+    <section id="view-cameras" class="view">
+      <header class="view-head">
+        <div><h2>Cameras</h2><p class="muted" id="cam-summary"></p></div>
+        <div class="actions"><button id="find-btn">Find cameras</button><button class="primary" id="add-btn">Add camera</button></div>
+      </header>
+      <div id="found" class="found" hidden></div>
+      <div id="wall" class="wall"></div>
+      <div id="wall-empty" class="empty" hidden>
+        <h3>No cameras yet</h3>
+        <p class="muted">Add a camera with its stream address (it usually starts with <code>rtsp://</code>), or let the hub look for cameras on your network.</p>
+      </div>
+    </section>
+
+    <section id="view-detection" class="view" hidden>
+      <header class="view-head"><div><h2>Detection</h2><p class="muted">Who decides when a person is at the camera.</p></div></header>
+      <div class="panel">
+        <h3>Source</h3>
+        <div class="seg" role="radiogroup" id="source-seg">
+          <button role="radio" data-v="builtin">This hub</button>
+          <button role="radio" data-v="frigate">Frigate</button>
+        </div>
+        <p class="muted" id="source-note"></p>
+        <form id="frigate-form" class="grid2" hidden>
+          <label class="span2">Frigate address
+            <input id="fr-url" placeholder="http://192.168.1.20:5000" required>
+            <small class="muted">Port 5000 on the same machine needs no login. From another machine use https://…:8971 with a Frigate user.</small>
+          </label>
+          <label>User <input id="fr-user" autocomplete="off" placeholder="optional"></label>
+          <label>Password <input id="fr-pass" type="password" autocomplete="off" placeholder="optional"></label>
+          <label class="span2">Alert on
+            <select id="fr-sev"><option value="alert">Frigate alerts</option><option value="detection">Alerts and detections</option></select>
+          </label>
+          <div class="span2 row"><button class="primary" type="submit" id="fr-connect">Connect to Frigate</button><span id="fr-status" class="muted"></span></div>
+        </form>
+      </div>
+      <div class="panel" id="builtin-panel">
+        <h3>This hub's detector</h3>
+        <p id="det-summary"></p>
+        <div class="seg" role="radiogroup" id="power-seg" aria-label="Accuracy versus power">
+          <button role="radio" data-v="power">Save power</button>
+          <button role="radio" data-v="balanced">Balanced</button>
+          <button role="radio" data-v="accuracy">Most accurate</button>
+        </div>
+        <label class="inline fps">Aim for up to <output id="fps-out"></output> checks per second per camera
+          <input type="range" id="fps" min="1" max="10" step="1">
+        </label>
+        <table class="profile">
+          <caption class="muted" id="hw-line"></caption>
+          <thead><tr><th>Model</th><th>Runs on</th><th class="num">Time per check</th><th></th></tr></thead>
+          <tbody id="profile-rows"></tbody>
+        </table>
+        <div class="row"><button id="bench-btn">Test this hardware again</button><span class="muted" id="bench-note"></span></div>
+      </div>
+    </section>
+
+    <section id="view-alerts" class="view" hidden>
+      <header class="view-head"><div><h2>Alerts</h2><p class="muted">Shared with every Lookout app: Apple Watch, iPhone, PC and TV.</p></div></header>
+      <div class="panel">
+        <label class="switch-row"><span><b>Person alerts</b><br><span class="muted">Pop up the camera and notify when someone is there.</span></span>
+          <input type="checkbox" role="switch" id="alerts-all"></label>
+      </div>
+      <div class="panel" id="alert-cams"></div>
+    </section>
+
+    <section id="view-apps" class="view" hidden>
+      <header class="view-head">
+        <div><h2>Apps</h2><p class="muted">iPhones and watches that can see your cameras. Each one has its own key you can take back.</p></div>
+        <div class="actions"><button class="primary" id="pair-btn">Pair an app</button></div>
+      </header>
+      <div class="panel pair" id="pair-panel" hidden>
+        <div class="qr" id="pair-qr" role="img" aria-label="Pairing QR code"></div>
+        <div class="pair-text">
+          <h3>Scan with the Lookout app</h3>
+          <p class="muted">On your iPhone, open Lookout and tap Pair with hub. Point the camera at this code, or type the number below. Your watch pairs through the iPhone.</p>
+          <p class="pair-code" id="pair-code" aria-label="Pairing number"></p>
+          <p class="muted" id="pair-expiry"></p>
+          <div class="row"><button id="pair-done">Done</button></div>
+        </div>
+      </div>
+      <div class="panel" id="device-panel">
+        <h3>Paired</h3>
+        <ul class="devices" id="devices"></ul>
+        <p class="muted" id="devices-empty" hidden>No apps are paired yet. Choose Pair an app to add your iPhone.</p>
+      </div>
+      <div class="panel">
+        <label class="switch-row"><span><b>Accept the shared app key</b><br><span class="muted">Apps installed before pairing all use one shared key. Turn this off once every app you use is listed above.</span></span>
+          <input type="checkbox" role="switch" id="legacy-sw"></label>
+      </div>
+    </section>
+
+    <section id="view-hub" class="view" hidden>
+      <header class="view-head"><div><h2>Hub</h2></div></header>
+      <div class="panel"><dl class="facts" id="hub-facts"></dl>
+        <div class="row"><button id="restart-btn">Restart hub</button><span class="muted" id="restart-note"></span></div>
+      </div>
+      <form class="panel grid2" id="hub-form">
+        <h3 class="span2">Name and away address</h3>
+        <label>Hub name <input id="hub-name" maxlength="40" required></label>
+        <label>Away address <input id="hub-remote" type="url" spellcheck="false" placeholder="https://lookout.example.com">
+          <small class="muted">Where the apps reach the hub when you're out. Leave empty to use the apps at home only. <a href="https://rogersquare.github.io/lookout/away.html" target="_blank" rel="noopener">How to set one up</a></small></label>
+        <div class="span2 row"><button type="submit">Save</button><span id="hub-note" class="muted"></span></div>
+      </form>
+      <form class="panel grid2" id="pw-form">
+        <h3 class="span2">Change password</h3>
+        <label>Current password <input type="password" id="pw-old" autocomplete="current-password" required></label>
+        <label>New password <input type="password" id="pw-new" autocomplete="new-password" minlength="8" required></label>
+        <div class="span2 row"><button type="submit">Change password</button><span id="pw-note" class="muted"></span></div>
+      </form>
+      <div class="panel row"><button id="signout-btn">Sign out</button></div>
+    </section>
+  </main>
+</div>
+
+<dialog id="cam-sheet" class="sheet">
+  <form method="dialog" id="cam-form">
+    <header><h2 id="sheet-title">Add camera</h2><button type="button" class="ghost" id="sheet-close" aria-label="Close">Close</button></header>
+    <div class="sheet-body">
+      <div class="grid2">
+        <label>Name <input id="c-name" required placeholder="Front door"></label>
+        <label>ID <input id="c-id" required pattern="[a-z0-9][a-z0-9_-]{0,31}" placeholder="front_door"><small class="muted">Lowercase, used in links.</small></label>
+        <label class="span2">Stream address <input id="c-url" spellcheck="false" placeholder="rtsp://user:password@192.168.1.30:554/stream1"></label>
+        <label class="span2">Sub-stream address <input id="c-sub" spellcheck="false" placeholder="optional: a smaller stream detection can use"></label>
+        <div class="span2 row"><button type="button" id="c-test">Test stream</button><span id="c-test-out" class="muted"></span></div>
+        <fieldset class="span2"><legend>This camera watches</legend>
+          <div class="seg" role="radiogroup" id="role-seg">
+            <button type="button" role="radio" data-v="door">A door</button>
+            <button type="button" role="radio" data-v="other">Somewhere else</button>
+          </div>
+          <small class="muted">Door cameras say “Someone’s at the door”.</small>
+        </fieldset>
+      </div>
+      <div id="zone-block">
+        <h3>Where to look</h3>
+        <p class="muted" id="zone-help">Click the picture to outline the area people must stand in. Leave it empty to use the whole picture.</p>
+        <div class="zone-wrap"><img id="zone-img" alt="Latest frame from this camera"><canvas id="zone-canvas"></canvas></div>
+        <div class="mh"><button type="button" id="zone-clear">Clear area</button>
+          <label>Ignore people shorter than <output id="mh-out"></output>
+            <input type="range" id="c-mh" min="0" max="0.6" step="0.05" aria-describedby="mh-help"></label></div>
+        <small class="muted" id="mh-help">The brass bar on the right of the picture shows that height. Useful when a street or path is visible far away.</small>
+      </div>
+      <p id="c-error" class="error" role="alert"></p>
+    </div>
+    <footer><button type="button" class="danger" id="c-delete">Delete camera</button><span class="grow"></span>
+      <button type="button" id="c-cancel">Cancel</button><button class="primary" id="c-save" value="save">Save camera</button></footer>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

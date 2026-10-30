@@ -1,0 +1,19 @@
+# Lookout Hub for Linux, NAS (Synology, QNAP, Unraid, TrueNAS) and Raspberry Pi (64-bit).
+# Start it in the folder this file is in:   docker compose up -d
+# Then open http://<this machine>:8765 and follow the setup page.
+#
+# Everything the hub keeps (settings, cameras, paired apps) lives in ./data next to this file.
+# Host networking lets your cameras, apps and Bonjour discovery reach the hub directly.
+#   8765  setup page, video for the apps, alerts for the desktop and TV apps
+#   8766  the app API (HTTPS with the hub's own certificate)
+#   8555  RTSP restreams of your cameras (for the desktop and TV apps, or an NVR)
+services:
+  hub:
+    image: ghcr.io/rogersquare/lookout-hub:latest
+    container_name: lookout-hub
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=${TZ:-UTC}

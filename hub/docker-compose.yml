@@ -1,0 +1,17 @@
+# Lookout Hub: one container. It runs its own go2rtc for the cameras you add, and keeps
+# everything (settings, cameras, tokens, paired devices) in ./data.
+#   :8765  hub (setup API, alerts, app API)
+#   :8555  RTSP restreams for desktop/projector popups and NVRs (e.g. Frigate)
+#   :1985  go2rtc API (local)
+# Host networking so cameras, apps and Bonjour (later) all see the hub on the LAN.
+services:
+  hub:
+    build: .
+    pull_policy: never
+    image: lookout-hub:latest
+    container_name: lookout-hub
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+      - ./secrets:/secrets:ro   # optional: APNs key for push alerts (not in git)

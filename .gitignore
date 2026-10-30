@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+config.json
+models/
+*.log
+
+# Recorded footage/photos for local tests (people in them; never published)
+tests/*.mp4
+tests/*.jpg
+hub/testmedia/
+models-export/
+.claude/

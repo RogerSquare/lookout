@@ -1,0 +1,23 @@
+# Frigate NVR on quad-box: license-free recording + person events for the Wyze cameras.
+# Cameras come from the Lookout Hub's go2rtc restream (:8555), so each camera keeps a single client.
+# Recordings live on rootnas (//10.0.0.145/docker/frigate mounted at /mnt/frigate via /etc/fstab);
+# config + database stay on quad-box's local disk. UI: https://10.0.0.127:8971
+services:
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:0.18.2
+    container_name: frigate
+    restart: unless-stopped
+    stop_grace_period: 30s
+    shm_size: "192mb"            # Frigate asked for >= 138 MB with these 2 cameras; raise if "Bus error"
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128   # UHD 630: VAAPI decode + OpenVINO detection
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./config:/config
+      - /mnt/frigate:/media/frigate
+      - type: tmpfs              # recording segments land here before moving to the NAS
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    ports:
+      - "8971:8971"              # authenticated UI/API only (8554/8555 are taken on this host)

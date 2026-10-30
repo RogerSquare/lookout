@@ -1,0 +1,38 @@
+{
+  "cameras": [
+    {
+      "id": "kitchen",
+      "name": "Kitchen Cam",
+      "detect_url": "rtsp://127.0.0.1:8555/kitchen_sd",
+      "streams": {
+        "hd": "rtsp://192.168.1.20:8555/kitchen",
+        "sd": "rtsp://192.168.1.20:8555/kitchen_sd"
+      },
+      "min_person_height": 0.25,
+      "hls_src": "kitchen_watch",
+      "hls_variants": {
+        "phone": "kitchen_phone"
+      }
+    },
+    {
+      "id": "bedroom",
+      "name": "Bedroom",
+      "detect_url": "rtsp://127.0.0.1:8555/bedroom",
+      "streams": {
+        "hd": "rtsp://192.168.1.20:8555/bedroom"
+      },
+      "hls_src": "bedroom_watch",
+      "hls_variants": {
+        "phone": "bedroom_phone"
+      }
+    }
+  ],
+  "model": "/models/yolo11s.onnx",
+  "threads": 2,
+  "detect_fps": 5,
+  "confidence": 0.5,
+  "hide_after_seconds": 15,
+  "port": 8765,
+  "gpu_helper": "http://192.168.1.10:8770",
+  "gpu_helper_timeout_ms": 400
+}

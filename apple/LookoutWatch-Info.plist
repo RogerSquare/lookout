@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- At home: the hub's API over HTTPS with its own (pinned) certificate, video over plain
+		     HTTP with short-lived tokens. Away: the hub's public HTTPS address. -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Lookout finds your Lookout Hub on your home network and shows its cameras.</string>
+	<!-- Keychain items (the pairing and this device's key) shared by the app and its extensions -->
+	<key>LookoutKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)dev.rogersquare.lookout.shared</string>
+</dict>
+</plist>

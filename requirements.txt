@@ -1,0 +1,5 @@
+# torch/torchvision: install from the CUDA index first (RTX 50-series needs cu128+)
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+ultralytics
+PySide6
+av
