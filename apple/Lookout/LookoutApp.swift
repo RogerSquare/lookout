@@ -44,6 +44,13 @@ struct RootView: View {
         .onChange(of: phase) { _, p in
             if p == .background { lock.lockIfNeeded() }
         }
+        // -pairLink <lookout://pair?...> at launch (simulator testing, where nothing can scan)
+        .task {
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-pairLink"), i + 1 < args.count {
+                await pairing.open(args[i + 1])
+            }
+        }
         .alert("Switch to \(pairing.pendingSwitch?.name ?? "this hub")?",
                isPresented: Binding(get: { pairing.pendingSwitch != nil }, set: { if !$0 { pairing.pendingSwitch = nil } })) {
             Button("Switch Hub") {
