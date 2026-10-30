@@ -172,7 +172,7 @@ label.inline.fps input { display: block; margin-top: .5rem; }
 /* apps: pairing card and paired devices */
 .pair { display: flex; gap: 1.6rem; align-items: center; flex-wrap: wrap; }
 .qr { background: #FFFFFF; border-radius: var(--radius-s); padding: .4rem; line-height: 0; }
-.qr svg { width: 220px; height: 220px; }
+.qr svg { width: 280px; height: 280px; }
 .pair.expired .qr { opacity: .25; }
 .pair-text { flex: 1; min-width: 240px; }
 .pair-code { font-size: 2.2rem; font-weight: 700; letter-spacing: .12em; font-variant-numeric: tabular-nums; margin: .6rem 0 .1rem; }

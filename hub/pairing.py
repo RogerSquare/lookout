@@ -90,7 +90,7 @@ class Pairing:
         now = time.time()
         with self.lock:
             self.codes = {k: v for k, v in self.codes.items() if v["expires"] > now}
-            secret = secrets.token_urlsafe(18)
+            secret = secrets.token_urlsafe(9)      # 72 bits, one use, 10 minutes: short keeps the QR easy to scan
             short = f"{secrets.randbelow(10**6):06d}"
             self.codes[secret] = {"short": short, "expires": now + CODE_TTL, "kind": kind, "by": by}
         return {"secret": secret, "code": short, "expires": now + CODE_TTL}

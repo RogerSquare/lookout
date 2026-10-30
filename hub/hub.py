@@ -983,7 +983,7 @@ class Hub:
         except PermissionError as e:
             raise web.HTTPForbidden(text=str(e))
         link = f"http://{self.public_host}:{self.settings['port']}/?setup={self.auth.setup_code}"
-        svg = segno.make(link, error="m").svg_inline(scale=6, border=2, dark="#14202B", light="#FFFFFF")
+        svg = segno.make(link, error="l").svg_inline(scale=8, border=4, dark="#000000", light="#FFFFFF")
         return web.json_response({"link": link, "qr_svg": svg})
 
     async def admin_login(self, request):
@@ -1240,19 +1240,24 @@ class Hub:
         return web.json_response({"ok": True})
 
     def pairing_link(self, code):
+        """lookout://pair?... for the QR code. Kept short so phone cameras read it easily off a
+        screen: only what the app can't assume (ports and name have defaults; the app learns the
+        rest from the hub when it pairs)."""
         from urllib.parse import urlencode
-        q = {"h": self.pairing.hub_id, "n": self.settings["hub_name"], "a": self.public_host,
-             "p": self.settings["https_port"], "q": self.settings["port"], "fp": self.pairing.fingerprint,
-             "c": code["secret"]}
+        q = {"a": self.public_host, "fp": self.pairing.fingerprint, "c": code["secret"]}
+        if self.settings["https_port"] != 8766:
+            q["p"] = self.settings["https_port"]
+        if self.settings["port"] != 8765:
+            q["q"] = self.settings["port"]
         if self.settings.get("remote_url"):
             q["r"] = self.settings["remote_url"]
-        return "lookout://pair?" + urlencode(q)
+        return "lookout://pair?" + urlencode(q, safe=":/")
 
     async def admin_new_pairing(self, request):
         import segno
         code = self.pairing.new_code(kind="app", by="setup-page")
         link = self.pairing_link(code)
-        svg = segno.make(link, error="m").svg_inline(scale=6, border=2, dark="#14202B", light="#FFFFFF")
+        svg = segno.make(link, error="l").svg_inline(scale=8, border=4, dark="#000000", light="#FFFFFF")
         return web.json_response({**code, "link": link, "qr_svg": svg, "hub": self.hub_info()})
 
     async def admin_devices(self, request):
