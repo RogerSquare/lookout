@@ -171,8 +171,8 @@ label.inline.fps input { display: block; margin-top: .5rem; }
 
 /* apps: pairing card and paired devices */
 .pair { display: flex; gap: 1.6rem; align-items: center; flex-wrap: wrap; }
-.qr { background: #FFFFFF; border-radius: var(--radius-s); padding: .4rem; line-height: 0; }
-.qr svg { width: 280px; height: 280px; }
+.qr { background: #FFFFFF; border-radius: var(--radius-s); line-height: 0; flex: none; }
+.qr svg { display: block; width: min(280px, 70vw); height: auto; aspect-ratio: 1; }
 .pair.expired .qr { opacity: .25; }
 .pair-text { flex: 1; min-width: 240px; }
 .pair-code { font-size: 2.2rem; font-weight: 700; letter-spacing: .12em; font-variant-numeric: tabular-nums; margin: .6rem 0 .1rem; }
@@ -183,7 +183,7 @@ label.inline.fps input { display: block; margin-top: .5rem; }
 /* first run on a computer: carry on on the phone */
 .handoff { text-align: center; margin: 1rem 0 .4rem; }
 .handoff .qr { display: inline-block; margin-bottom: .8rem; }
-.handoff .qr svg { width: 232px; height: 232px; }
+.handoff .qr svg { width: min(240px, 70vw); }
 .handoff button { margin-top: .4rem; }
 .auth-card.handing-off > label, .auth-card.handing-off > .error, .auth-card.handing-off > #auth-submit,
 .auth-card.handing-off > #auth-lede { display: none; }

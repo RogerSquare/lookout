@@ -983,7 +983,7 @@ class Hub:
         except PermissionError as e:
             raise web.HTTPForbidden(text=str(e))
         link = f"http://{self.public_host}:{self.settings['port']}/?setup={self.auth.setup_code}"
-        svg = segno.make(link, error="l").svg_inline(scale=8, border=4, dark="#000000", light="#FFFFFF")
+        svg = segno.make(link, error="l").svg_inline(scale=8, border=4, dark="#000000", light="#FFFFFF", omitsize=True)
         return web.json_response({"link": link, "qr_svg": svg})
 
     async def admin_login(self, request):
@@ -1257,7 +1257,7 @@ class Hub:
         import segno
         code = self.pairing.new_code(kind="app", by="setup-page")
         link = self.pairing_link(code)
-        svg = segno.make(link, error="l").svg_inline(scale=8, border=4, dark="#000000", light="#FFFFFF")
+        svg = segno.make(link, error="l").svg_inline(scale=8, border=4, dark="#000000", light="#FFFFFF", omitsize=True)
         return web.json_response({**code, "link": link, "qr_svg": svg, "hub": self.hub_info()})
 
     async def admin_devices(self, request):
