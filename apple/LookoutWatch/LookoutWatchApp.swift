@@ -8,6 +8,7 @@ struct LookoutWatchApp: App {
 
     init() {
         VideoGuard.checkLastRun()
+        Prefs.onInvite = { WatchPairing.shared.accept($0) }
         _ = Prefs.shared            // start WatchConnectivity so the iPhone's settings arrive
     }
 

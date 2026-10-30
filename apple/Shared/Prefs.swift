@@ -8,6 +8,10 @@ import WatchConnectivity
 final class Prefs: NSObject, ObservableObject {
     static let shared = Prefs()
 
+    /// Watch app: handles a pairing invite from the iPhone (set by WatchPairing; the complication,
+    /// which shares this file, has none)
+    static var onInvite: ((String) -> Void)?
+
     /// Camera ids hidden from the watch's pages
     @Published private(set) var hiddenOnWatch: Set<String>
     /// Camera ids in the order the user arranged them (cameras not listed go last, hub order)
@@ -149,7 +153,7 @@ extension Prefs: WCSessionDelegate {
     #else
     nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
         if let invite = userInfo["invite"] as? String {
-            Task { @MainActor in WatchPairing.shared.accept(invite) }
+            Task { @MainActor in Prefs.onInvite?(invite) }
         }
     }
     #endif
