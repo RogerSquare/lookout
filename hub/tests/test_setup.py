@@ -50,6 +50,8 @@ async def main():
             code = (data / "setup-code").read_text().strip()
             async with s.get(f"{BASE}/") as r:
                 check("setup page served at /", r.status == 200 and "Lookout Hub" in await r.text())
+                check("setup page can't be framed by other sites", r.headers.get("X-Frame-Options") == "DENY"
+                      and "frame-ancestors 'none'" in r.headers.get("Content-Security-Policy", ""))
             async with s.get(f"{BASE}/static/app.js") as r:
                 check("page script served", r.status == 200 and "X-Lookout-CSRF" in await r.text())
             async with s.get(f"{BASE}/api/admin/session") as r:

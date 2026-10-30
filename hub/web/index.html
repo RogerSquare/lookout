@@ -4,14 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <title>Lookout Hub</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%2314202B'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23A87B2F' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23E9EEF2'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23295CDB'/%3E%3Cstop offset='1' stop-color='%23121F4D'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='7.4' fill='url(%23g)'/%3E%3Crect x='6' y='10.5' width='13' height='11' rx='2.8' fill='%23fff'/%3E%3Cpath d='M20.5 14.3l4.3-2.6c.5-.3 1 .1 1 .6v7.4c0 .5-.5.9-1 .6l-4.3-2.6z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
 <div id="auth" class="auth" hidden>
   <form class="auth-card" id="auth-form" autocomplete="on">
-    <div class="mark" aria-hidden="true"><span></span></div>
+    <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="5.5" width="14.5" height="13" rx="3.2"/><path d="M17.4 10.3l4.1-2.6c.5-.3 1 .1 1 .6v7.4c0 .5-.5.9-1 .6l-4.1-2.6z"/></svg></div>
     <h1 id="auth-title">Lookout Hub</h1>
     <div class="handoff" id="handoff" hidden>
       <div class="qr" id="handoff-qr" role="img" aria-label="QR code that opens this setup on your phone"></div>
@@ -36,12 +38,12 @@
 
 <div id="app" class="app" hidden>
   <nav class="rail" aria-label="Sections">
-    <div class="brand"><div class="mark small" aria-hidden="true"><span></span></div><b>Lookout</b></div>
-    <a href="#cameras" data-view="cameras">Cameras</a>
-    <a href="#detection" data-view="detection">Detection</a>
-    <a href="#alerts" data-view="alerts">Alerts</a>
-    <a href="#apps" data-view="apps">Apps</a>
-    <a href="#hub" data-view="hub">Hub</a>
+    <div class="brand"><div class="mark small" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="5.5" width="14.5" height="13" rx="3.2"/><path d="M17.4 10.3l4.1-2.6c.5-.3 1 .1 1 .6v7.4c0 .5-.5.9-1 .6l-4.1-2.6z"/></svg></div><b>Lookout</b></div>
+    <a href="#cameras" data-view="cameras"><span class="ico" style="--c:var(--blue)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="5.5" width="14.5" height="13" rx="3.2"/><path d="M17.4 10.3l4.1-2.6c.5-.3 1 .1 1 .6v7.4c0 .5-.5.9-1 .6l-4.1-2.6z"/></svg></span>Cameras</a>
+    <a href="#detection" data-view="detection"><span class="ico" style="--c:var(--purple)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9.2" r="3.2"/><path d="M6.6 18.6c.7-2.9 2.9-4.4 5.4-4.4s4.7 1.5 5.4 4.4z"/><path d="M2.5 7V4.8A2.3 2.3 0 0 1 4.8 2.5H7v1.8H4.8a.5.5 0 0 0-.5.5V7zm14.5-4.5h2.2a2.3 2.3 0 0 1 2.3 2.3V7h-1.8V4.8a.5.5 0 0 0-.5-.5H17zM2.5 17h1.8v2.2c0 .3.2.5.5.5H7v1.8H4.8a2.3 2.3 0 0 1-2.3-2.3zm19 0v2.2a2.3 2.3 0 0 1-2.3 2.3H17v-1.8h2.2c.3 0 .5-.2.5-.5V17z"/></svg></span>Detection</a>
+    <a href="#alerts" data-view="alerts"><span class="ico" style="--c:var(--red)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5c-3.5 0-6 2.7-6 6.2v3.6L4.2 15.6c-.4.8.1 1.6 1 1.6h13.6c.9 0 1.4-.8 1-1.6L18 12.3V8.7c0-3.5-2.5-6.2-6-6.2zM9.4 18.6a2.7 2.7 0 0 0 5.2 0z"/></svg></span>Alerts</a>
+    <a href="#apps" data-view="apps"><span class="ico" style="--c:var(--indigo)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.2 1.5h7.6a2.7 2.7 0 0 1 2.7 2.7v15.6a2.7 2.7 0 0 1-2.7 2.7H8.2a2.7 2.7 0 0 1-2.7-2.7V4.2a2.7 2.7 0 0 1 2.7-2.7zm0 1.8a.9.9 0 0 0-.9.9v15.6c0 .5.4.9.9.9h7.6c.5 0 .9-.4.9-.9V4.2a.9.9 0 0 0-.9-.9h-1.3c-.2.6-.6.9-1.2.9h-1.4c-.6 0-1-.3-1.2-.9z"/></svg></span>Apps</a>
+    <a href="#hub" data-view="hub"><span class="ico" style="--c:var(--gray)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 3h15A2.5 2.5 0 0 1 22 5.5v3A2.5 2.5 0 0 1 19.5 11h-15A2.5 2.5 0 0 1 2 8.5v-3A2.5 2.5 0 0 1 4.5 3zm0 10h15a2.5 2.5 0 0 1 2.5 2.5v3a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 18.5v-3A2.5 2.5 0 0 1 4.5 13zM17.5 6a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0 10a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg></span>Hub</a>
     <div class="rail-foot muted" id="rail-status"></div>
   </nav>
 
@@ -102,9 +104,9 @@
     </section>
 
     <section id="view-alerts" class="view" hidden>
-      <header class="view-head"><div><h2>Alerts</h2><p class="muted">Shared with every Lookout app: Apple Watch, iPhone, PC and TV.</p></div></header>
+      <header class="view-head"><div><h2>Alerts</h2><p class="muted">Pops up the camera when someone is there. Shared with every Lookout app: iPhone, Apple Watch, PC and TV.</p></div></header>
       <div class="panel">
-        <label class="switch-row"><span><b>Person alerts</b><br><span class="muted">Pop up the camera and notify when someone is there.</span></span>
+        <label class="switch-row"><span class="ico" style="--c:var(--red)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5c-3.5 0-6 2.7-6 6.2v3.6L4.2 15.6c-.4.8.1 1.6 1 1.6h13.6c.9 0 1.4-.8 1-1.6L18 12.3V8.7c0-3.5-2.5-6.2-6-6.2zM9.4 18.6a2.7 2.7 0 0 0 5.2 0z"/></svg></span><span class="grow"><b>Person Alerts</b><br><span class="muted">Pop up the camera and notify when someone is there.</span></span>
           <input type="checkbox" role="switch" id="alerts-all"></label>
       </div>
       <div class="panel" id="alert-cams"></div>
@@ -156,7 +158,7 @@
         <label>New password <input type="password" id="pw-new" autocomplete="new-password" minlength="8" required></label>
         <div class="span2 row"><button type="submit">Change password</button><span id="pw-note" class="muted"></span></div>
       </form>
-      <div class="panel row"><button id="signout-btn">Sign out</button></div>
+      <div class="panel row"><button class="danger" id="signout-btn">Sign Out</button></div>
     </section>
   </main>
 </div>

@@ -1034,7 +1034,10 @@ class Hub:
         html = (WEB / "index.html").read_text(encoding="utf-8")
         stamp = str(int(max((WEB / f).stat().st_mtime for f in ("app.css", "app.js"))))
         html = html.replace("/static/app.css", f"/static/app.css?v={stamp}").replace("/static/app.js", f"/static/app.js?v={stamp}")
-        return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-cache"})
+        # never inside another site's frame (clickjacking the admin page)
+        return web.Response(text=html, content_type="text/html", headers={
+            "Cache-Control": "no-cache", "X-Frame-Options": "DENY",
+            "Content-Security-Policy": "frame-ancestors 'none'", "Referrer-Policy": "no-referrer"})
 
     async def admin_config(self, request):
         return web.json_response({**self.store.public(), "hub": {

@@ -132,6 +132,13 @@ function renderAll() { renderWall(); renderDetection(); renderAlerts(); renderHu
 
 /* ---------- apps (pairing) ---------- */
 const platformNames = { ios: "iPhone", watchos: "Apple Watch", android: "Android", windows: "Windows", macos: "Mac", other: "App" };
+// The Settings-style tile for each kind of device (glyphs drawn here, white on the color)
+const deviceIcons = {
+  ios: ["var(--indigo)", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.2 1.5h7.6a2.7 2.7 0 0 1 2.7 2.7v15.6a2.7 2.7 0 0 1-2.7 2.7H8.2a2.7 2.7 0 0 1-2.7-2.7V4.2a2.7 2.7 0 0 1 2.7-2.7zm0 1.8a.9.9 0 0 0-.9.9v15.6c0 .5.4.9.9.9h7.6c.5 0 .9-.4.9-.9V4.2a.9.9 0 0 0-.9-.9h-1.3c-.2.6-.6.9-1.2.9h-1.4c-.6 0-1-.3-1.2-.9z"/></svg>`],
+  watchos: ["var(--blue)", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 1.5h6l.7 3.1A3.5 3.5 0 0 1 18.5 8v8a3.5 3.5 0 0 1-2.8 3.4L15 22.5H9l-.7-3.1A3.5 3.5 0 0 1 5.5 16V8a3.5 3.5 0 0 1 2.8-3.4zM9 6.3c-1 0-1.7.7-1.7 1.7v8c0 1 .7 1.7 1.7 1.7h6c1 0 1.7-.7 1.7-1.7V8c0-1-.7-1.7-1.7-1.7z"/></svg>`],
+};
+deviceIcons.other = deviceIcons.android = deviceIcons.windows = deviceIcons.macos = ["var(--gray)", deviceIcons.ios[1]];
+
 function ago(t) {
   if (!t) return "not seen yet";
   const s = Date.now() / 1000 - t;
@@ -147,7 +154,9 @@ async function loadApps() {
   const names = Object.fromEntries(d.devices.map(x => [x.id, x.name]));
   $("#devices").replaceChildren(...d.devices.map(dev => {
     const li = document.createElement("li");
-    li.innerHTML = `<span><b></b><br><span class="muted"></span></span><button class="danger">Remove</button>`;
+    li.innerHTML = `<span class="ico"></span><span class="grow"><b></b><br><span class="muted"></span></span><button class="danger">Remove</button>`;
+    const icon = deviceIcons[dev.platform] || deviceIcons.ios;
+    $(".ico", li).style.setProperty("--c", icon[0]); $(".ico", li).innerHTML = icon[1];
     $("b", li).textContent = dev.name;
     const how = dev.via && names[dev.via] ? `, added by ${names[dev.via]}` : "";
     $(".muted", li).textContent = `${platformNames[dev.platform] || "App"}, paired ${new Date(dev.paired * 1000).toLocaleDateString()}${how}, ${ago(dev.last_seen)}`;
@@ -189,7 +198,7 @@ function renderRail() {
 
 /* ---------- cameras ---------- */
 function camState(c) { return c.person ? "person" : c.connected ? "live" : "offline"; }
-const stateWords = { person: "Someone's there", live: "Live", offline: "Offline" };
+const stateWords = { person: "Person now", live: "Live", offline: "Offline" };   // as in the iPhone app
 
 function renderWall() {
   const wall = $("#wall");
@@ -204,7 +213,7 @@ function renderWall() {
     const st = camState(c);
     t.dataset.state = st; t.classList.toggle("offline", st === "offline");
     t.setAttribute("aria-label", `${cfg.name}, ${stateWords[st]}. Edit camera`);
-    t.innerHTML = `<img alt=""><span class="none">No picture</span><span class="role"></span><span class="cap"><b></b><span class="state"><span class="dot"></span><span class="sw"></span></span></span>`;
+    t.innerHTML = `<span class="pic"><img alt=""><span class="none">No picture</span><span class="role"></span></span><span class="cap"><b></b><span class="state"><span class="dot"></span><span class="sw"></span></span></span>`;
     $("b", t).textContent = cfg.name;
     $(".sw", t).textContent = stateWords[st];
     const role = $(".role", t);
@@ -466,7 +475,9 @@ function renderAlerts() {
   $("#alerts-all").checked = state.alerts.enabled;
   $("#alert-cams").replaceChildren(...state.config.cameras.map(cfg => {
     const row = document.createElement("label"); row.className = "switch-row";
-    row.innerHTML = `<span><b></b><br><span class="muted"></span></span><input type="checkbox" role="switch">`;
+    row.innerHTML = `<img class="thumb" alt=""><span class="grow"><b></b><br><span class="muted"></span></span><input type="checkbox" role="switch">`;
+    $(".thumb", row).src = `/api/cameras/${encodeURIComponent(cfg.id)}/live.jpg?w=160&t=${Date.now()}`;
+    $(".thumb", row).onerror = e => e.target.removeAttribute("src");
     $("b", row).textContent = cfg.name;
     $(".muted", row).textContent = cfg.role === "door" ? "Says “Someone’s at the door”" : "Says “Person detected”";
     const sw = $("input", row);
