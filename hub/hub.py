@@ -932,7 +932,7 @@ class Hub:
 
     # ---- admin API (setup page) --------------------------------------------------------
 
-    OPEN_ADMIN = {"/api/admin/session", "/api/admin/setup", "/api/admin/login", "/api/admin/logout"}
+    OPEN_ADMIN = {"/api/admin/session", "/api/admin/setup", "/api/admin/setup-qr", "/api/admin/login", "/api/admin/logout"}
 
     @web.middleware
     async def admin_auth(self, request, handler):
@@ -972,6 +972,19 @@ class Hub:
         log.info("setup: admin password set; the setup code is no longer valid")
         (DATA_DIR / "setup-code").unlink(missing_ok=True)
         return self._signed_in(web.json_response({"ok": True}), token)
+
+    async def admin_setup_qr(self, request):
+        """The setup link as a QR code, so setup can carry on on a phone. Only for someone who
+        already has the setup code (the page was opened from the setup link)."""
+        import segno
+        body = await self._json_body(request)
+        try:
+            self.auth.check_setup_code(body.get("code", ""))
+        except PermissionError as e:
+            raise web.HTTPForbidden(text=str(e))
+        link = f"http://{self.public_host}:{self.settings['port']}/?setup={self.auth.setup_code}"
+        svg = segno.make(link, error="m").svg_inline(scale=6, border=2, dark="#14202B", light="#FFFFFF")
+        return web.json_response({"link": link, "qr_svg": svg})
 
     async def admin_login(self, request):
         body = await self._json_body(request)
@@ -1479,6 +1492,7 @@ class Hub:
         app.router.add_static("/static/", WEB, show_index=False)
         app.router.add_get("/api/admin/session", self.admin_session)
         app.router.add_post("/api/admin/setup", self.admin_setup)
+        app.router.add_post("/api/admin/setup-qr", self.admin_setup_qr)
         app.router.add_post("/api/admin/login", self.admin_login)
         app.router.add_post("/api/admin/logout", self.admin_logout)
         app.router.add_post("/api/admin/password", self.admin_password)

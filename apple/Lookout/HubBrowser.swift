@@ -16,6 +16,8 @@ final class HubBrowser: ObservableObject {
     }
 
     @Published private(set) var hubs: [Found] = []
+    /// iOS is blocking Local Network access for Lookout (the permission was declined)
+    @Published private(set) var blocked = false
     private var browser: NWBrowser?
 
     func start() {
@@ -29,6 +31,13 @@ final class HubBrowser: ObservableObject {
                              fingerprintPrefix: txt["fp"] ?? "")
             }
             Task { @MainActor in self.update(found) }
+        }
+        b.stateUpdateHandler = { state in
+            // Declined Local Network access shows up as the browser waiting with a policy error
+            var denied = false
+            if case .waiting(let error) = state, case .dns(let code) = error, code == -65570 { denied = true }
+            if case .failed(let error) = state, case .dns(let code) = error, code == -65570 { denied = true }
+            Task { @MainActor in if self.blocked != denied { self.blocked = denied } }
         }
         b.start(queue: .main)
         browser = b

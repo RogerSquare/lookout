@@ -13,6 +13,11 @@
   <form class="auth-card" id="auth-form" autocomplete="on">
     <div class="mark" aria-hidden="true"><span></span></div>
     <h1 id="auth-title">Lookout Hub</h1>
+    <div class="handoff" id="handoff" hidden>
+      <div class="qr" id="handoff-qr" role="img" aria-label="QR code that opens this setup on your phone"></div>
+      <p><b>Scan with your phone's camera</b><br><span class="muted">to set up the hub there. It's the same page, and the setup code comes along.</span></p>
+      <button type="button" class="ghost" id="handoff-here">Set up in this browser instead</button>
+    </div>
     <p id="auth-lede" class="muted"></p>
     <label id="code-field" hidden>Setup code
       <input id="code" name="code" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX">
@@ -113,8 +118,10 @@
       <div class="panel pair" id="pair-panel" hidden>
         <div class="qr" id="pair-qr" role="img" aria-label="Pairing QR code"></div>
         <div class="pair-text">
-          <h3>Scan with the Lookout app</h3>
-          <p class="muted">On your iPhone, open Lookout and tap Pair with hub. Point the camera at this code, or type the number below. Your watch pairs through the iPhone.</p>
+          <h3>Scan with your iPhone's camera</h3>
+          <p class="muted">Point the iPhone's Camera app (or Scan QR Code in Lookout) at this code, or type the number below in Lookout. Your watch pairs through the iPhone.</p>
+          <p class="open-here"><a class="button primary" id="pair-open" href="#">Open in Lookout</a><br>
+            <span class="muted">On the iPhone you're pairing? Tap this instead.</span></p>
           <p class="pair-code" id="pair-code" aria-label="Pairing number"></p>
           <p class="muted" id="pair-expiry"></p>
           <div class="row"><button id="pair-done">Done</button></div>

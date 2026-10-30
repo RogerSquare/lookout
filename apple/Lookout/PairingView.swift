@@ -83,11 +83,30 @@ struct PairingView: View {
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 6)
                         VStack(spacing: 0) {
-                            if browser.hubs.isEmpty {
-                                HStack(spacing: 12) {
-                                    ProgressView()
-                                    Text("Looking for hubs…").foregroundStyle(.secondary)
-                                    Spacer()
+                            if browser.blocked {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Label("Lookout can't see your network", systemImage: "wifi.exclamationmark")
+                                        .font(.body.weight(.medium))
+                                    Text("Turn on Local Network for Lookout in Settings, or scan the QR code instead.")
+                                        .font(.footnote).foregroundStyle(.secondary)
+                                    Button("Open Settings") {
+                                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                                            UIApplication.shared.open(url)
+                                        }
+                                    }
+                                    .font(.footnote.weight(.semibold))
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(16)
+                            } else if browser.hubs.isEmpty {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(spacing: 12) {
+                                        ProgressView()
+                                        Text("Looking for hubs…").foregroundStyle(.secondary)
+                                        Spacer()
+                                    }
+                                    Text("Not showing up? Scan the QR code instead, or check Settings > Lookout > Local Network.")
+                                        .font(.footnote).foregroundStyle(.secondary)
                                 }
                                 .padding(16)
                             }

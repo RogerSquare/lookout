@@ -179,3 +179,21 @@ label.inline.fps input { display: block; margin-top: .5rem; }
 .devices { list-style: none; margin: 0; padding: 0; }
 .devices li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .6rem 0; }
 .devices li + li { border-top: 1px solid var(--line); }
+
+/* first run on a computer: carry on on the phone */
+.handoff { text-align: center; margin: 1rem 0 .4rem; }
+.handoff .qr { display: inline-block; margin-bottom: .8rem; }
+.handoff .qr svg { width: 232px; height: 232px; }
+.handoff button { margin-top: .4rem; }
+.auth-card.handing-off > label, .auth-card.handing-off > .error, .auth-card.handing-off > #auth-submit,
+.auth-card.handing-off > #auth-lede { display: none; }
+
+a.button { display: inline-block; text-decoration: none; border-radius: 999px; padding: .5rem 1rem; }
+a.button.primary { background: var(--brass); color: var(--brass-ink); font-weight: 600; }
+.open-here { margin: .8rem 0; }
+/* on a phone the page itself is on the device being paired: lead with the button */
+@media (pointer: coarse) and (max-width: 700px) {
+  .pair { flex-direction: column-reverse; align-items: stretch; }
+  .pair .qr { align-self: center; }
+}
+@media not ((pointer: coarse) and (max-width: 700px)) { .open-here { display: none; } }

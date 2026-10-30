@@ -40,9 +40,40 @@ async function boot() {
 const setupFromLink = new URLSearchParams(location.search).get("setup");
 if (setupFromLink) history.replaceState(null, "", location.pathname + location.hash);
 
+// Opened from the setup link on a computer: offer to carry on on a phone instead (the QR code
+// opens this page there, with the code). Phones go straight to the form.
+const onPhone = matchMedia("(pointer: coarse)").matches && innerWidth < 700;
+async function showHandoff() {
+  try {
+    const r = await api("/api/admin/setup-qr", { method: "POST", body: { code: setupFromLink }, allow401: true });
+    $("#handoff-qr").innerHTML = r.qr_svg;          // SVG markup made by the hub
+    $("#handoff").hidden = false;
+    $("#auth-form").classList.add("handing-off");
+    // Finished on the phone: this page becomes the normal sign-in
+    const wait = setInterval(async () => {
+      if ($("#handoff").hidden) return clearInterval(wait);
+      const st = await api("/api/admin/session", { allow401: true }).catch(() => null);
+      if (st?.claimed) {
+        clearInterval(wait);
+        claimed = true;
+        $("#handoff").hidden = true;
+        $("#auth-form").classList.remove("handing-off");
+        showAuth();
+        $("#auth-lede").textContent = "Set up on your phone. Sign in here with the same password.";
+      }
+    }, 3000);
+  } catch { /* wrong or used-up code: just show the form */ }
+}
+$("#handoff-here").onclick = () => {
+  $("#handoff").hidden = true;
+  $("#auth-form").classList.remove("handing-off");
+  $("#password").focus();
+};
+
 function showAuth() {
   $("#app").hidden = true; $("#auth").hidden = false;
   if (!claimed && setupFromLink) $("#code").value = setupFromLink;
+  if (!claimed && setupFromLink && !onPhone && !showAuth.offered) { showAuth.offered = true; showHandoff(); }
   $("#code-field").hidden = claimed; $("#confirm-field").hidden = claimed;
   $("#auth-title").textContent = claimed ? "Sign in to Lookout Hub" : "Set up Lookout Hub";
   $("#auth-lede").textContent = claimed ? "Enter the hub's password."
@@ -131,6 +162,7 @@ let pairTimer;
 $("#pair-btn").onclick = async () => {
   const p = await api("/api/admin/pairing", { method: "POST" });
   $("#pair-qr").innerHTML = p.qr_svg;            // SVG markup made by the hub
+  $("#pair-open").href = p.link;                  // lookout://pair?... opens the app on this phone
   $("#pair-code").textContent = p.code.replace(/(\d{3})(\d{3})/, "$1 $2");
   $("#pair-panel").hidden = false;
   clearInterval(pairTimer);

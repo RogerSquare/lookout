@@ -65,6 +65,17 @@ class Auth:
         with self.lock:
             self.failures.append(time.time())
 
+    def check_setup_code(self, code):
+        """True for the current setup code; wrong guesses count towards the lockout."""
+        if self.claimed:
+            raise PermissionError("this hub already has a password")
+        if self.locked_out():
+            raise PermissionError("too many attempts; wait a minute")
+        if not hmac.compare_digest(str(code).strip().upper(), self.setup_code or "~"):
+            self._fail()
+            raise PermissionError("that setup code doesn't match")
+        return True
+
     def claim(self, code, password):
         """First run: the setup code proves you run the hub; returns a session token."""
         if self.claimed:

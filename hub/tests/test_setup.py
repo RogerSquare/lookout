@@ -57,6 +57,12 @@ async def main():
                 check("new hub: not claimed, not signed in", st["claimed"] is False and st["signed_in"] is False)
             async with s.get(f"{BASE}/api/admin/config") as r:
                 check("admin API refuses before sign-in", r.status == 401)
+            async with s.post(f"{BASE}/api/admin/setup-qr", json={"code": "0000-0000-0000"}) as r:
+                check("setup QR needs the setup code", r.status == 403)
+            async with s.post(f"{BASE}/api/admin/setup-qr", json={"code": code}) as r:
+                q = await r.json()
+                check("setup QR carries the setup link", r.status == 200 and q["link"].endswith(f"/?setup={code}")
+                      and "<svg" in q["qr_svg"])
             async with s.post(f"{BASE}/api/admin/setup", json={"code": "0000-0000-0000", "password": "longenough"}) as r:
                 check("wrong setup code refused", r.status == 403)
             async with s.post(f"{BASE}/api/admin/setup", json={"code": code, "password": "short"}) as r:
@@ -73,6 +79,8 @@ async def main():
                   and "setup_code" not in settings)
             async with s.post(f"{BASE}/api/admin/setup", json={"code": code, "password": "another-pass"}) as r:
                 check("a hub can only be claimed once", r.status == 403)
+            async with s.post(f"{BASE}/api/admin/setup-qr", json={"code": code}) as r:
+                check("no setup QR once claimed", r.status == 403)
             async with s.get(f"{BASE}/api/admin/config") as r:
                 check("signed-in session reads the admin API", r.status == 200)
             async with s.put(f"{BASE}/api/admin/settings", json={"detect_fps": 4}) as r:
