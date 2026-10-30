@@ -269,6 +269,12 @@ function openSheet(cfg, prefill = {}) {
   $("#c-delete").hidden = !cfg;
   zone = (c.zone || []).map(p => [...p]);
   role = c.role || "other";
+  const p = c.ptz || {};
+  $("#ptz-on").checked = !!c.ptz;
+  $("#ptz-fields").hidden = !c.ptz;
+  $("#ptz-url").value = p.url || ""; $("#ptz-cam").value = p.camera || ""; $("#ptz-key").value = p.api_key || "";
+  $("#ptz-test").hidden = !c.ptz;                 // test after saving: the hub moves it with the saved settings
+  $("#ptz-out").textContent = "";
   seg($("#role-seg"), role, v => { role = v; seg($("#role-seg"), role); });
   const frigate = state.source?.type === "frigate";
   $("#zone-block").classList.toggle("zone-block-off", frigate);
@@ -346,12 +352,29 @@ $("#cam-form").addEventListener("submit", async e => {
   if ($("#c-url").value) body.url = $("#c-url").value.trim();
   if ($("#c-sub").value) body.sub_url = $("#c-sub").value.trim();
   if (zone.length >= 3) body.zone = zone;
+  if ($("#ptz-on").checked) {
+    body.ptz = { type: "wyze-bridge", url: $("#ptz-url").value.trim(), camera: $("#ptz-cam").value.trim() };
+    if ($("#ptz-key").value) body.ptz.api_key = $("#ptz-key").value;
+  }
   if (editing) for (const k of ["detect_url", "streams", "hls_src", "hls_variants", "loop"]) if (k in editing && !body.url) body[k] = editing[k];
   const id = $("#c-id").value.trim();
   try {
     await api(`/api/admin/cameras/${encodeURIComponent(id)}`, { method: "PUT", body });
     sheet.close(); toast(editing ? "Camera saved" : "Camera added"); await refresh();
   } catch (x) { $("#c-error").textContent = x.message; }
+});
+
+$("#ptz-on").onchange = e => {
+  $("#ptz-fields").hidden = !e.target.checked;
+  if (e.target.checked && !$("#ptz-cam").value) $("#ptz-cam").value = $("#c-id").value;
+};
+$$("#ptz-test button").forEach(b => b.onclick = async () => {
+  if (!editing) return;
+  const body = { pan: Number(b.dataset.pan || 0), tilt: Number(b.dataset.tilt || 0) };
+  $("#ptz-out").textContent = "Moving…";
+  try { await api(`/api/admin/cameras/${encodeURIComponent(editing.id)}/ptz`, { method: "POST", body });
+        $("#ptz-out").textContent = "Moved"; }
+  catch (x) { $("#ptz-out").textContent = x.message; }
 });
 
 $("#c-delete").onclick = async () => {

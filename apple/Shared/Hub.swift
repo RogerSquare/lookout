@@ -12,9 +12,11 @@ struct HubCamera: Codable, Identifiable, Equatable {
     let frame: String
     let hls: String?
     let mjpeg: String?
+    /// The camera can pan and tilt (hubs before 0.7 don't say)
+    let ptz: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, connected, person, since, alerts, frame, hls, mjpeg
+        case id, name, connected, person, since, alerts, frame, hls, mjpeg, ptz
         case lastSeen = "last_seen"
     }
 
@@ -212,6 +214,11 @@ struct HubClient {
     /// Tell the hub to forget this device (its key stops working at once).
     func unpair() async throws {
         _ = try await send("POST", "/api/watch/unpair", timeout: 6)
+    }
+
+    /// Nudge a camera that can turn: pan/tilt -1...1 (1 is about 30 degrees).
+    func ptz(_ cam: HubCamera, pan: Double, tilt: Double) async throws {
+        _ = try await send("POST", "/api/watch/cameras/\(cam.id)/ptz", json: ["pan": pan, "tilt": tilt], timeout: 10)
     }
 
     func hlsURL(_ cam: HubCamera, variant: String? = nil) async -> URL? {

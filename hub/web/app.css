@@ -197,3 +197,9 @@ a.button.primary { background: var(--brass); color: var(--brass-ink); font-weigh
   .pair .qr { align-self: center; }
 }
 @media not ((pointer: coarse) and (max-width: 700px)) { .open-here { display: none; } }
+
+/* camera sheet: pan and tilt */
+#ptz-block .switch-row { padding-top: 0; }
+#ptz-fields { margin-top: .6rem; }
+.ptz-test { gap: .4rem; flex-wrap: wrap; align-items: center; }
+.ptz-test button { min-width: 2.6rem; padding: .4rem .7rem; }

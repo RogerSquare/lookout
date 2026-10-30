@@ -22,7 +22,7 @@ EDITABLE = {
 }
 CAMERA_FIELDS = {
     "id", "name", "role", "url", "sub_url", "detect_url", "streams", "hls_src", "hls_variants",
-    "min_person_height", "zone", "loop", "enabled",
+    "min_person_height", "zone", "loop", "enabled", "ptz",
 }
 ROLES = ("door", "other")
 _ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
@@ -70,8 +70,27 @@ def validate_camera(cam):
             for p in zone)
         if not ok:
             raise ConfigError("zone must be 3+ [x, y] points, each a 0-1 fraction of the frame")
+    if cam.get("ptz") is not None:
+        import ptz
+        try:
+            cam["ptz"] = ptz.validate(cam["ptz"])
+        except ValueError as e:
+            raise ConfigError(str(e))
+    else:
+        cam.pop("ptz", None)
     cam.setdefault("enabled", True)
     return cam
+
+
+def mask_camera(cam):
+    """A camera as the setup page sees it: stream passwords and the PTZ key masked."""
+    c = dict(cam)
+    for key in ("url", "sub_url", "detect_url"):
+        if key in c:
+            c[key] = mask_url(c[key])
+    if c.get("ptz", {}).get("api_key"):
+        c["ptz"] = {**c["ptz"], "api_key": "***"}
+    return c
 
 
 class Store:
@@ -165,11 +184,7 @@ class Store:
         with self.lock:
             cams = []
             for c in self.data["cameras"]:
-                c = dict(c)
-                for key in ("url", "sub_url", "detect_url"):
-                    if key in c:
-                        c[key] = mask_url(c[key])
-                cams.append(c)
+                cams.append(mask_camera(c))
             return {"version": self.data["version"], "settings": dict(self.data["settings"]), "cameras": cams}
 
     # ---- writes --------------------------------------------------------------------------
@@ -177,6 +192,7 @@ class Store:
     def put_camera(self, cam):
         """Add a camera, or replace the one with the same id. A masked password ("***") in the
         new url keeps the stored one, so the setup page can save without re-entering it."""
+        keep_key = isinstance(cam, dict) and isinstance(cam.get("ptz"), dict) and cam["ptz"].get("api_key") == "***"
         cam = validate_camera(cam)
         with self.lock:
             cams = self.data["cameras"]
@@ -185,6 +201,10 @@ class Store:
                 for key in ("url", "sub_url", "detect_url"):
                     if key in cam and ":***@" in cam[key] and old.get(key) and mask_url(old[key]) == cam[key]:
                         cam[key] = old[key]
+                if keep_key and cam.get("ptz"):
+                    cam["ptz"]["api_key"] = (old.get("ptz") or {}).get("api_key")
+                    if not cam["ptz"]["api_key"]:
+                        cam["ptz"].pop("api_key")
                 cams[cams.index(old)] = cam
             else:
                 cams.append(cam)

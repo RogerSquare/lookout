@@ -21,7 +21,7 @@ ARG MODELS_URL=https://github.com/RogerSquare/lookout/releases/download/models-v
 COPY models.sha256 /models/
 RUN cd /models && for f in $(awk '{print $2}' models.sha256); do curl -fsSL --retry 3 -o "$f" "$MODELS_URL/$f"; done \
  && sha256sum -c models.sha256
-COPY hub.py store.py streams.py detect.py frigate.py auth.py pairing.py bench.py ./
+COPY hub.py store.py streams.py detect.py frigate.py auth.py pairing.py ptz.py bench.py ./
 COPY web ./web
 ENV PYTHONUNBUFFERED=1 LOOKOUT_DATA=/data LOOKOUT_VERSION=${LOOKOUT_VERSION}
 VOLUME /data

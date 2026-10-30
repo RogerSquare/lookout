@@ -60,7 +60,8 @@ from auth import CSRF_HEADER, SESSION_COOKIE, SESSION_DAYS, Auth
 from detect import NO_BOXES
 from frigate import Frigate, FrigateError
 from pairing import Pairing
-from store import ConfigError, Store, mask_url
+from ptz import PTZ, PTZError
+from store import ConfigError, Store, mask_camera, mask_url
 from streams import Go2rtc, lan_ip, resolve
 
 CONFIG_FILE = Path(os.environ.get("LOOKOUT_CONFIG", "/config/config.json"))  # legacy; imported once
@@ -251,6 +252,7 @@ class Camera:
             "frame": f"{base}/frame.jpg",
             "hls": f"{base}/stream.m3u8" if self.hls_src else None,
             "mjpeg": f"{base}/live.mjpeg",
+            "ptz": bool(self.cfg.get("ptz")),
         }
 
     def _set_connected(self, connected):
@@ -1058,11 +1060,7 @@ class Hub:
         except ConfigError as e:
             raise web.HTTPBadRequest(text=str(e))
         await asyncio.get_running_loop().run_in_executor(None, self.apply_cameras)
-        out = dict(cam)
-        for key in ("url", "sub_url", "detect_url"):
-            if key in out:
-                out[key] = mask_url(out[key])
-        return web.json_response(out)
+        return web.json_response(mask_camera(cam))
 
     async def admin_delete_camera(self, request):
         if not self.store.delete_camera(request.match_info["id"]):
@@ -1158,6 +1156,34 @@ class Hub:
             self.publish({"type": "detector", "detector": self.detector.name, "choice": self.choice})
         self.publish({**self.state()})
         return web.json_response({"type": kind, "imported": added})
+
+    async def _ptz(self, request, cam_id):
+        cam = self.cameras.get(cam_id)
+        if cam is None:
+            raise web.HTTPNotFound(text="unknown camera")
+        cfg = cam.cfg.get("ptz")
+        if not cfg:
+            raise web.HTTPNotFound(text="this camera can't pan or tilt")
+        if getattr(self, "ptz", None) is None:
+            self.ptz = PTZ(self.http)
+        body = await self._json_body(request)
+        try:
+            await self.ptz.run(cam.id, cfg, body)
+        except ValueError as e:
+            raise web.HTTPBadRequest(text=str(e))
+        except PTZError as e:
+            if str(e) == "busy":
+                raise web.HTTPConflict(text="still moving")
+            raise web.HTTPBadGateway(text=str(e))
+        return web.json_response({"ok": True})
+
+    async def watch_ptz(self, request):
+        """Move a camera that can pan/tilt: {"pan": -1..1, "tilt": -1..1} or {"preset": n}."""
+        return await self._ptz(request, request.match_info["cam"])
+
+    async def admin_ptz(self, request):
+        """The setup page's test buttons."""
+        return await self._ptz(request, request.match_info["id"])
 
     async def watch_visitors(self, request):
         """Recent person alerts for a camera (from Frigate), newest first, with thumbnails."""
@@ -1519,6 +1545,8 @@ class Hub:
         app.router.add_get("/api/watch/media-token", self.watch_media_token)
         app.router.add_post("/api/watch/pairing-code", self.watch_pairing_code)
         app.router.add_post("/api/watch/unpair", self.watch_unpair)
+        app.router.add_post("/api/watch/cameras/{cam}/ptz", self.watch_ptz)
+        app.router.add_post("/api/admin/cameras/{id}/ptz", self.admin_ptz)
         app.router.add_put("/api/admin/source", self.admin_put_source)
         app.router.add_get("/api/watch/cameras/{cam}/visitors", self.watch_visitors)
         app.router.add_get("/api/watch/visitors/{det}.jpg", self.watch_visitor_image)

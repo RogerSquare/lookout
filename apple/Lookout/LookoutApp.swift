@@ -128,6 +128,12 @@ struct PhoneHome: View {
                 }
                 .padding()
             }
+            .overlay(alignment: .bottomTrailing) {
+                if cam.ptz == true {
+                    PanTiltPad(camera: cam, client: store.client)
+                        .padding(24)
+                }
+            }
             .background(.black)
         }
         // Opened from a person alert: show that camera full screen once the list has it

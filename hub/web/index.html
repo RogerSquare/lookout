@@ -178,6 +178,23 @@
           </div>
           <small class="muted">Door cameras say “Someone’s at the door”.</small>
         </fieldset>
+        <fieldset class="span2" id="ptz-block"><legend>Pan and tilt</legend>
+          <label class="switch-row"><span>This camera can turn<br><span class="muted">A Wyze Cam Pan connected through docker-wyze-bridge (version 3.x; 4.x can't send movement).</span></span>
+            <input type="checkbox" role="switch" id="ptz-on"></label>
+          <div class="grid2" id="ptz-fields" hidden>
+            <label>Bridge address <input id="ptz-url" spellcheck="false" placeholder="http://192.168.1.20:5000"></label>
+            <label>Camera name in the bridge <input id="ptz-cam" spellcheck="false" placeholder="bedroom"></label>
+            <label class="span2">Bridge API key <input id="ptz-key" type="password" autocomplete="off" placeholder="only if the bridge asks for one"></label>
+            <div class="span2 row ptz-test" id="ptz-test">
+              <span class="muted">Try it:</span>
+              <button type="button" data-pan="-1" aria-label="Turn left">←</button>
+              <button type="button" data-tilt="1" aria-label="Tilt up">↑</button>
+              <button type="button" data-tilt="-1" aria-label="Tilt down">↓</button>
+              <button type="button" data-pan="1" aria-label="Turn right">→</button>
+              <span class="muted" id="ptz-out"></span>
+            </div>
+          </div>
+        </fieldset>
       </div>
       <div id="zone-block">
         <h3>Where to look</h3>
