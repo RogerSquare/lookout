@@ -52,7 +52,10 @@ DEFAULTS = {
     "frigate_url": None,        # e.g. "https://10.0.0.127:8971": "Open Frigate" in the tray flyout
     "gpu_helper_port": 8770,    # serve the hub's detection on this PC's GPU; null to disable
     "gpu_helper_model": "yolo11l.pt",
+    "warm_preview": True,       # hub mode: keep each camera's small stream running so popups open live
 }
+
+NO_VIDEO_TIMEOUT = 6            # connected but no decoded video for this long: drop and reconnect
 
 log = logging.getLogger("lookout")
 
@@ -86,37 +89,58 @@ class Camera:
     def stop(self):
         self._stop.set()
 
-    def _read_loop(self, stop=None):
+    def _read_loop(self, stop=None, url=None, sink=None, label=None):
+        """Decode `url` (default: the camera's) until `stop`, handing each frame to `sink`
+        (default: self.latest). Reconnects on errors, and when a connected stream stops
+        producing pictures for NO_VIDEO_TIMEOUT seconds."""
         stop = stop or self._stop
-        backoff = 2
+        url = url or self.url
+        label = label or self.name
+        sink = sink or self._set_latest
+        backoff = 1
         while not stop.is_set():
             try:
-                # Low-latency options for live streams only; they make file sources decode nothing
-                options = ({"rtsp_transport": "tcp", "fflags": "nobuffer", "flags": "low_delay"}
-                           if self.url.startswith("rtsp") else {})
-                with av.open(self.url, options=options, timeout=(10, 10)) as container:
+                # Low-latency options for live streams only; they make file sources decode nothing.
+                # Small probe: connect in well under a second instead of analysing for seconds.
+                options = ({"rtsp_transport": "tcp", "fflags": "nobuffer", "flags": "low_delay",
+                            "probesize": "65536", "analyzeduration": "500000"}
+                           if url.startswith("rtsp") else {})
+                with av.open(url, options=options, timeout=(5, 5)) as container:
                     stream = container.streams.video[0]
                     stream.thread_type = "AUTO"
-                    if not self.connected:
-                        log.info("%s: connected (%dx%d)", self.name, stream.codec_context.width, stream.codec_context.height)
-                    self.connected = True
-                    backoff = 2
-                    for frame in container.decode(stream):
+                    last_picture = time.time()
+                    announced = False
+                    for packet in container.demux():
                         if stop.is_set():
                             return
-                        self.latest = frame
-                        self.latest_time = time.time()
-                        if self.loop:
-                            time.sleep(1 / 15)
+                        if packet.stream.index == stream.index:
+                            for frame in packet.decode():
+                                last_picture = time.time()
+                                if not announced:
+                                    announced = True
+                                    if not self.connected or label != self.name:
+                                        log.info("%s: connected (%dx%d)", label, frame.width, frame.height)
+                                    self.connected = True
+                                    backoff = 1
+                                sink(frame)
+                                if self.loop:
+                                    time.sleep(1 / 15)
+                        if time.time() - last_picture > NO_VIDEO_TIMEOUT:
+                            raise RuntimeError(f"no video for {NO_VIDEO_TIMEOUT}s")
                 if self.loop:
                     stop.wait(1 / 15)
                     continue
-                log.warning("%s: stream ended", self.name)
-            except Exception as e:  # network drops, camera reboots, bad URL
-                log.warning("%s: stream error: %s", self.name, e)
-            self.connected = False
+                log.warning("%s: stream ended", label)
+            except Exception as e:  # network drops, camera reboots, bad URL, stuck restream
+                log.warning("%s: stream error: %s", label, e)
+            if label == self.name:
+                self.connected = False
             stop.wait(backoff)
-            backoff = min(backoff * 2, 60)
+            backoff = min(backoff * 2, 30)
+
+    def _set_latest(self, frame):
+        self.latest = frame
+        self.latest_time = time.time()
 
     def _detect_loop(self):
         interval = 1 / self.settings["detect_fps"]
@@ -224,53 +248,107 @@ class HubFeed:
 
 
 class HubCamera(Camera):
-    """A camera whose "person here" state comes from the hub. Video is only decoded while its
-    popup is showing (opened on demand from the hub's full-HD restream)."""
+    """A camera whose "person here" state comes from the hub. Its small restream (sd) keeps
+    decoding in the background, so a popup opens on live video at once; the full-HD restream is
+    only decoded while a popup is enlarged, and the picture falls back to sd if HD stalls."""
+
+    FRESH = 1.5   # a frame newer than this (seconds) counts as live
 
     def __init__(self, info, settings, feed):
-        hd = info.get("streams", {}).get("hd") or info.get("streams", {}).get("sd") or ""
-        super().__init__({"name": info["name"], "url": hd, "loop": info.get("loop", False)},
+        streams = info.get("streams", {})
+        self.hd_url = streams.get("hd") or streams.get("sd") or ""
+        self.sd_url = streams.get("sd") or self.hd_url
+        super().__init__({"name": info["name"], "url": self.sd_url, "loop": info.get("loop", False)},
                          settings, model=None, model_lock=None)
         self.id = info["id"]
         self.feed = feed
         self.connected = info.get("connected", False)
         self.person = info.get("person", False)
         self.alerts = info.get("alerts", True)
-        self._reader = None
-        self._reader_stop = None
+        self.warm = settings.get("warm_preview", True)
+        self._sd = self._hd = None             # (thread, stop event)
+        self._sd_frame = self._hd_frame = self._still = None
+        self._sd_time = self._hd_time = 0.0
+        self._popup_open = False
 
-    def start(self):  # no local decoding or detection until a popup needs video
-        pass
+    # The popup reads .latest: freshest HD while enlarged, else sd, else the alert still
+    @property
+    def latest(self):
+        now = time.time()
+        if self._hd_frame is not None and now - self._hd_time < self.FRESH:
+            return self._hd_frame
+        if self._sd_frame is not None and now - self._sd_time < self.FRESH:
+            return self._sd_frame
+        return self._still if self._still is not None else self._sd_frame
+
+    @latest.setter
+    def latest(self, value):   # Camera.__init__ assigns None
+        self._still = value
+
+    def _start_reader(self, url, label, sink):
+        stop = threading.Event()
+        t = threading.Thread(target=self._read_loop, args=(stop, url, sink, label), name=f"read-{label}", daemon=True)
+        t.start()
+        return t, stop
+
+    @staticmethod
+    def _alive(reader):
+        return reader is not None and reader[0].is_alive() and not reader[1].is_set()
+
+    def _sd_sink(self, frame):
+        self._sd_frame, self._sd_time = frame, time.time()
+
+    def _hd_sink(self, frame):
+        self._hd_frame, self._hd_time = frame, time.time()
+
+    def start(self):
+        if self.warm and self.sd_url:
+            self._ensure_sd()
 
     def stop(self):
         self.close_stream()
+        if self._sd:
+            self._sd[1].set()
+            self._sd = None
+
+    def _ensure_sd(self):
+        if not self._alive(self._sd):
+            self._sd = self._start_reader(self.sd_url, f"{self.name} (preview)", self._sd_sink)
 
     @property
     def streaming(self):
-        return self._reader is not None and self._reader.is_alive()
+        return self._popup_open
 
     def open_stream(self, snapshot_path=None):
-        if not self.streaming:
-            self.latest = None
-            self._reader_stop = threading.Event()
-            self._reader = threading.Thread(target=self._read_loop, args=(self._reader_stop,),
-                                            name=f"read-{self.name}", daemon=True)
-            self._reader.start()
-        if snapshot_path:
+        self._popup_open = True
+        self._ensure_sd()
+        # The alert still covers the moment before live video, unless sd is already live
+        if snapshot_path and not (self._sd_frame is not None and time.time() - self._sd_time < self.FRESH):
             threading.Thread(target=self._load_snapshot, args=(snapshot_path,), daemon=True).start()
 
+    def want_hd(self, on):
+        """Popup enlarged: decode full HD (sd keeps covering until HD has a picture)."""
+        if on and self.hd_url and self.hd_url != self.sd_url and self._popup_open:
+            if not self._alive(self._hd):
+                self._hd = self._start_reader(self.hd_url, f"{self.name} (HD)", self._hd_sink)
+        elif self._hd:
+            self._hd[1].set()
+            self._hd, self._hd_frame = None, None
+
     def _load_snapshot(self, path):
-        """Show the hub's detection frame at once while RTSP connects (~1 s)."""
+        """Show the hub's detection frame at once while live video connects."""
         data = self.feed.fetch(path)
-        if data and self.latest is None:
+        if data and self._popup_open:
             img = np.asarray(Image.open(io.BytesIO(data)).convert("RGB"))
-            self.latest = av.VideoFrame.from_ndarray(img, format="rgb24")
+            self._still = av.VideoFrame.from_ndarray(img, format="rgb24")
 
     def close_stream(self):
-        if self._reader_stop is not None:
-            self._reader_stop.set()
-        self._reader = None
-        self.latest = None
+        self._popup_open = False
+        self.want_hd(False)
+        self._still = None
+        if not self.warm and self._sd:
+            self._sd[1].set()
+            self._sd, self._sd_frame = None, None
 
     def person_gone(self):
         # The hub already waits hide_after_seconds after the last sighting before person_gone
@@ -465,6 +543,8 @@ class Popup(QWidget):
     # ---- video ----------------------------------------------------------------------------
 
     def _refresh(self):
+        if hasattr(self.camera, "want_hd"):
+            self.camera.want_hd(self.enlarged and self.isVisible() and not self.closing)
         frame = self.camera.latest
         if frame is not None:
             w, h = self.FRAME_SIZE

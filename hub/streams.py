@@ -73,8 +73,40 @@ def _quote(s):
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+HEALTH_EVERY = 120       # seconds between restream checks
+HEALTH_STRIKES = 2       # failed checks in a row before go2rtc is restarted
+
+
+def restreams(config_text):
+    """Names of the camera restreams in a go2rtc config (not the exec: variants made from them)."""
+    names, in_streams = [], False
+    for line in config_text.splitlines():
+        if line.startswith("streams:"):
+            in_streams = True
+        elif in_streams and line.startswith("  ") and ":" in line:
+            name, _, src = line.strip().partition(":")
+            if not src.strip().strip('"').startswith("exec:"):
+                names.append(name)
+        elif in_streams and line and not line.startswith(" "):
+            in_streams = False
+    return names
+
+
+def has_video(url, timeout=15):
+    """True if the stream gives a decodable picture size. A restream can go bad and keep
+    sending video packets nobody can decode (lost parameter sets): players then freeze."""
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-rtsp_transport", "tcp", "-select_streams", "v:0",
+                            "-show_entries", "stream=width", "-of", "csv=p=0", url],
+                           capture_output=True, text=True, timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return r.stdout.strip().split(",")[0].isdigit() and int(r.stdout.strip().split(",")[0]) > 0
+
+
 class Go2rtc:
-    """Runs go2rtc with a generated config; restarted when the cameras change or it dies."""
+    """Runs go2rtc with a generated config; restarted when the cameras change, when it dies, and
+    when one of its camera restreams stops carrying a usable picture."""
 
     def __init__(self, data_dir, api_port, rtsp_port, binary=None):
         self.config = Path(data_dir) / "go2rtc.yaml"
@@ -85,6 +117,8 @@ class Go2rtc:
         self.lock = threading.Lock()
         self._stop = threading.Event()
         self._text = None
+        self.strikes = {}          # restream name -> failed checks in a row
+        self.started_at = 0.0
 
     @property
     def available(self):
@@ -112,10 +146,12 @@ class Go2rtc:
                 self.proc.kill()
         self.proc = subprocess.Popen([self.binary, "-config", str(self.config)],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.started_at = time.time()
+        self.strikes = {}
         log.info("go2rtc started (pid %d, rtsp :%d, api :%d)", self.proc.pid, self.rtsp_port, self.api_port)
 
     def watchdog(self):
-        """Background thread: bring go2rtc back if it exits."""
+        """Background threads: bring go2rtc back if it exits, and if a restream goes bad."""
         def run():
             while not self._stop.wait(5):
                 with self.lock:
@@ -124,6 +160,38 @@ class Go2rtc:
                         time.sleep(1)
                         self._restart()
         threading.Thread(target=run, name="go2rtc-watchdog", daemon=True).start()
+        threading.Thread(target=self._health_loop, name="go2rtc-health", daemon=True).start()
+
+    def check_health(self):
+        """Probe each camera restream once; restart go2rtc after HEALTH_STRIKES bad checks in a
+        row on any of them. Returns the names that failed this round."""
+        text = self._text
+        if not text or not self.proc or self.proc.poll() is not None or time.time() - self.started_at < 60:
+            return []
+        failed = []
+        for name in restreams(text):
+            if self._stop.is_set():
+                return failed
+            if has_video(f"rtsp://127.0.0.1:{self.rtsp_port}/{name}"):
+                self.strikes[name] = 0
+            else:
+                self.strikes[name] = self.strikes.get(name, 0) + 1
+                failed.append(name)
+        bad = [n for n, k in self.strikes.items() if k >= HEALTH_STRIKES]
+        if bad:
+            log.warning("go2rtc: %s gave no usable picture %d checks in a row; restarting go2rtc",
+                        ", ".join(bad), HEALTH_STRIKES)
+            with self.lock:
+                if self._text is not None:
+                    self._restart()
+        return failed
+
+    def _health_loop(self):
+        while not self._stop.wait(HEALTH_EVERY):
+            try:
+                self.check_health()
+            except Exception:
+                log.exception("go2rtc health check failed")
 
     def stop(self):
         self._stop.set()
