@@ -75,21 +75,28 @@ def _quote(s):
 
 HEALTH_EVERY = 120       # seconds between restream checks
 HEALTH_STRIKES = 2       # failed checks in a row before go2rtc is restarted
+HEALTH_COOLDOWN = 900    # never restart go2rtc for health more often than this (seconds)
 
 
-def restreams(config_text):
-    """Names of the camera restreams in a go2rtc config (not the exec: variants made from them)."""
-    names, in_streams = [], False
+def restream_sources(config_text):
+    """{name: source url} for the camera restreams in a go2rtc config (not the exec: variants)."""
+    found, in_streams = {}, False
     for line in config_text.splitlines():
         if line.startswith("streams:"):
             in_streams = True
         elif in_streams and line.startswith("  ") and ":" in line:
             name, _, src = line.strip().partition(":")
-            if not src.strip().strip('"').startswith("exec:"):
-                names.append(name)
+            src = src.strip().strip('"')
+            if not src.startswith("exec:"):
+                found[name] = src
         elif in_streams and line and not line.startswith(" "):
             in_streams = False
-    return names
+    return found
+
+
+def restreams(config_text):
+    """Names of the camera restreams in a go2rtc config (not the exec: variants made from them)."""
+    return list(restream_sources(config_text))
 
 
 def has_video(url, timeout=15):
@@ -119,6 +126,8 @@ class Go2rtc:
         self._text = None
         self.strikes = {}          # restream name -> failed checks in a row
         self.started_at = 0.0
+        self.healed_at = 0.0       # last restart made by the health check
+        self.offline = set()       # cameras whose own source gives no picture (logged once)
 
     @property
     def available(self):
@@ -164,23 +173,36 @@ class Go2rtc:
 
     def check_health(self):
         """Probe each camera restream once; restart go2rtc after HEALTH_STRIKES bad checks in a
-        row on any of them. Returns the names that failed this round."""
+        row on any of them. A restream only counts against go2rtc when the camera itself still
+        gives a picture: an offline camera is not fixed by restarting go2rtc (and hammering it
+        with reconnects can wedge a fragile camera). Returns the names that failed this round."""
         text = self._text
         if not text or not self.proc or self.proc.poll() is not None or time.time() - self.started_at < 60:
             return []
         failed = []
-        for name in restreams(text):
+        for name, src in restream_sources(text).items():
             if self._stop.is_set():
                 return failed
             if has_video(f"rtsp://127.0.0.1:{self.rtsp_port}/{name}"):
                 self.strikes[name] = 0
-            else:
-                self.strikes[name] = self.strikes.get(name, 0) + 1
-                failed.append(name)
+                if name in self.offline:
+                    self.offline.discard(name)
+                    log.info("go2rtc: %s has a picture again", name)
+                continue
+            failed.append(name)
+            if src.startswith("rtsp") and not has_video(src):
+                self.strikes[name] = 0
+                if name not in self.offline:
+                    self.offline.add(name)
+                    log.warning("go2rtc: camera for %s gives no picture itself (offline?); not restarting go2rtc", name)
+                continue
+            self.offline.discard(name)
+            self.strikes[name] = self.strikes.get(name, 0) + 1
         bad = [n for n, k in self.strikes.items() if k >= HEALTH_STRIKES]
-        if bad:
+        if bad and time.time() - self.healed_at >= HEALTH_COOLDOWN:
             log.warning("go2rtc: %s gave no usable picture %d checks in a row; restarting go2rtc",
                         ", ".join(bad), HEALTH_STRIKES)
+            self.healed_at = time.time()
             with self.lock:
                 if self._text is not None:
                     self._restart()

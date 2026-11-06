@@ -41,12 +41,16 @@ g = streams.Go2rtc("/tmp", 1985, 8555, binary="go2rtc")
 g._text, g.proc, g.started_at = CONFIG, Proc(), time.time() - 600
 restarts = []
 g._restart = lambda: (restarts.append(1), setattr(g, "strikes", {}))
-bad = {"kitchen"}
+bad = {"kitchen"}          # restreams with no picture
+dead = set()               # cameras whose own source has no picture
 probed = []
+SRC = {"rtsp://u:p@10.0.0.5/1": "kitchen", "rtsp://u:p@10.0.0.5/2": "kitchen_sd", "rtsp://10.0.0.6/live": "bedroom"}
 
 
 def fake_probe(url, timeout=15):
     probed.append(url)
+    if url in SRC:
+        return SRC[url] not in dead
     return url.rsplit("/", 1)[1] not in bad
 
 
@@ -55,6 +59,7 @@ check("first bad check only counts a strike", g.check_health() == ["kitchen"] an
 check("probes go through the local restream port", probed[0] == "rtsp://127.0.0.1:8555/kitchen")
 g.check_health()
 check("second bad check in a row restarts go2rtc", restarts == [1])
+check("source probed only when the restream fails", "rtsp://10.0.0.6/live" not in probed)
 bad.clear()
 g.check_health()
 check("healthy streams reset their strikes", restarts == [1] and all(v == 0 for v in g.strikes.values()))
@@ -65,6 +70,20 @@ g.check_health()
 bad.add("bedroom")
 g.check_health()
 check("a single blip between good checks never restarts", restarts == [1], str(g.strikes))
+bad, dead = {"kitchen", "kitchen_sd"}, {"kitchen", "kitchen_sd"}
+for _ in range(4):
+    g.check_health()
+check("an offline camera never restarts go2rtc", restarts == [1] and "kitchen" in g.offline, str(g.strikes))
+bad, dead = set(), set()
+g.check_health()
+check("camera back: no longer marked offline", not g.offline)
+bad = {"bedroom"}
+g.check_health(); g.check_health()
+check("restarts are rate-limited (cooldown)", restarts == [1], str(restarts))
+g.healed_at = time.time() - streams.HEALTH_COOLDOWN
+g.check_health()
+check("after the cooldown a bad restream restarts again", restarts == [1, 1])
+bad = set()
 g.started_at = time.time()
 check("no checks in the first minute after a (re)start", g.check_health() == [])
 
