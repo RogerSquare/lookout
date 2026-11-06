@@ -34,7 +34,7 @@ jobs:
       # The suites that need recorded camera footage run on the maintainer's hub instead
       - name: Tests
         run: |
-          for t in test_pairing test_setup test_ptz test_streams_health test_detect; do
+          for t in test_pairing test_setup test_ptz test_streams_health test_offline test_detect; do
             docker run --rm --network host -v "$PWD/hub:/app" -w /app lookout-hub:test python "tests/$t.py"
           done
       - name: Installer syntax

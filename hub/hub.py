@@ -81,6 +81,8 @@ DEFAULTS = {
     "trigger_hits": 2,          # positives needed...
     "trigger_window": 3,        # ...within this many consecutive checks
     "hide_after_seconds": 15,
+    "offline_alert_after": 120, # no picture from a camera this long (seconds): notify; 0 turns it off
+    "offline_renotify": 1800,   # a camera that keeps dropping is reported at most this often
     "host": "0.0.0.0",
     "port": 8765,
     "gpu_helper": None,         # e.g. "http://10.0.0.250:8770" (desktop Lookout app's GPU helper)
@@ -216,6 +218,10 @@ class Camera:
         self.snapshot = None       # JPEG bytes of the frame that raised the latest alert
         self.hits = collections.deque(maxlen=settings["trigger_window"])
         self._stop = threading.Event()
+        self.started_at = time.time()
+        self.offline = False        # reported as unresponsive (no picture for offline_alert_after)
+        self.offline_notified = 0.0 # when the last offline notice went out
+        self.offline_reported = False   # this outage's notice was sent (so "back" is too)
 
     def start(self):
         threading.Thread(target=self._read_loop, name=f"read-{self.id}", daemon=True).start()
@@ -230,6 +236,7 @@ class Camera:
             "name": self.name,
             "role": self.role,
             "connected": self.connected,
+            "offline": self.offline,
             "person": self.person,
             "confidence": round(self.confidence, 3),
             "since": self.since,
@@ -245,6 +252,7 @@ class Camera:
             "name": self.name,
             "role": self.role,
             "connected": self.connected,
+            "offline": self.offline,
             "person": self.person or time.time() < self.test_until,
             "since": self.since,
             "last_seen": self.last_seen,
@@ -469,6 +477,36 @@ class Push:
     @staticmethod
     def _kind(topic):
         return "watch" if topic.endswith(".watchkitapp") else "phone"
+
+    async def send_notice(self, cam_id, title, body, kind, target="phone"):
+        """A camera status notice (offline / back). Goes to the phone unless only a watch is
+        registered; collapses per camera so a newer notice replaces the older one."""
+        if not self.devices:
+            return
+        kinds = {self._kind(d["topic"]) for d in self.devices.values()}
+        if target not in kinds:
+            target = "all"
+        self._http()
+        payload = {"aps": {"alert": {"title": title, "body": body}, "sound": "default",
+                           "thread-id": "camera-status", "interruption-level": "active"},
+                   "camera": cam_id, "notice": kind}
+        auth = f"bearer {self._token()}"
+        for token, dev in list(self.devices.items()):
+            if target != "all" and self._kind(dev["topic"]) != target:
+                continue
+            host = self.cfg.get("url") or self.HOSTS.get(dev["env"], self.HOSTS["production"])
+            try:
+                r = await self._client.post(f"{host}/3/device/{token}", json=payload, headers={
+                    "authorization": auth, "apns-topic": dev["topic"], "apns-push-type": "alert",
+                    "apns-priority": "10", "apns-collapse-id": f"status-{cam_id}",
+                    "apns-expiration": str(int(time.time()) + 3600)})
+            except Exception as e:
+                log.warning("push: %s... notice failed: %s", token[:8], e)
+                continue
+            if r.status_code == 200:
+                log.info("push: sent %s %s notice to %s %s...", cam_id, kind, self._kind(dev["topic"]), token[:8])
+            else:
+                log.warning("push: %s... refused notice %s", token[:8], r.status_code)
 
     async def send(self, cam_id, cam_name, test=False, target=None, role="other"):
         """target: "watch", "phone" or "all"; default is the apns "targets" setting (watch).
@@ -797,6 +835,15 @@ class Hub:
         self.next_id += 1
         for q in list(self.subscribers):
             q.put_nowait((eid, event))
+        if self.push and event["type"] == "camera_health":
+            name = event.get("name", event["camera"])
+            if event["offline"]:
+                asyncio.ensure_future(self.push.send_notice(
+                    event["camera"], f"{name} is offline",
+                    f"No picture for {event['minutes']} min. A restart of the camera usually fixes it.", "offline"))
+            else:
+                asyncio.ensure_future(self.push.send_notice(
+                    event["camera"], f"{name} is back", "The camera is sending video again.", "back"))
         if self.push and event["type"] == "person_detected":
             asyncio.ensure_future(self.push.send(event["camera"], event.get("name", event["camera"]),
                                                  test=event.get("test", False), target=event.get("push"),
@@ -1453,6 +1500,7 @@ class Hub:
             self.go2rtc.watchdog()
         for cam in self.cameras.values():
             cam.start()
+        asyncio.ensure_future(self._offline_loop())
         self.watch_load()
         await self.advertise()
         if self.source["type"] == "frigate":
@@ -1464,6 +1512,43 @@ class Hub:
                         log.warning("frigate: can't connect yet (%s), retrying", e)
                         await asyncio.sleep(10)
             asyncio.ensure_future(connect())
+
+    def check_offline(self, now=None):
+        """Report cameras that have sent no picture for offline_alert_after seconds (a camera can
+        stay "connected" while sending nothing), and their return. Returns the events published."""
+        after = self.settings.get("offline_alert_after") or 0
+        if not after:
+            return []
+        now = now or time.time()
+        out = []
+        for cam in list(self.cameras.values()):
+            if cam.loop:
+                continue
+            last = max(cam.latest_time, cam.started_at)
+            if not cam.offline and now - last >= after:
+                cam.offline = True
+                log.warning("%s: no picture for %ds; reporting it offline", cam.id, int(now - last))
+                if now - cam.offline_notified >= self.settings.get("offline_renotify", 1800):
+                    cam.offline_notified, cam.offline_reported = now, True
+                    out.append({"type": "camera_health", "camera": cam.id, "name": cam.name,
+                                "offline": True, "minutes": max(1, round((now - last) / 60))})
+            elif cam.offline and now - cam.latest_time < 10:
+                cam.offline = False
+                log.info("%s: picture is back", cam.id)
+                if cam.offline_reported:   # only say "back" when this outage's "offline" was sent
+                    cam.offline_reported = False
+                    out.append({"type": "camera_health", "camera": cam.id, "name": cam.name, "offline": False})
+        for ev in out:
+            self.publish(ev)
+        return out
+
+    async def _offline_loop(self):
+        while True:
+            await asyncio.sleep(10)
+            try:
+                self.check_offline()
+            except Exception:
+                log.exception("offline check failed")
 
     async def advertise(self):
         """Announce the hub on the LAN as _lookout._tcp, so apps find it without typing an address."""

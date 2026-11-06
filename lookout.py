@@ -1170,6 +1170,15 @@ class App:
                 cam.person, cam.last_person_time = False, time.time()
             elif kind == "camera_status" and cam:
                 cam.connected = ev["connected"]
+            elif kind == "camera_health" and cam:
+                if ev.get("offline"):
+                    self.tray.showMessage(f"{cam.name} is offline",
+                                          f"No picture for {ev.get('minutes', 2)} min. Restarting the camera usually fixes it.",
+                                          QSystemTrayIcon.Warning, 15000)
+                else:
+                    self.tray.showMessage(f"{cam.name} is back", "The camera is sending video again.",
+                                          QSystemTrayIcon.Information, 8000)
+                log.info("%s: hub reports it %s", cam.name, "offline" if ev.get("offline") else "back")
             elif kind == "alerts":
                 self.detection = ev["enabled"]
                 for cid, on in ev.get("cameras", {}).items():
