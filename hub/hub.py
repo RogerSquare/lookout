@@ -97,6 +97,9 @@ DEFAULTS = {
     "hub_name": "Lookout Hub",
     "remote_url": None,         # how apps reach the hub away from home, e.g. https://lookout.example.com
     "allow_legacy_token": True, # accept the old shared app token (turn off once every app is paired)
+    # Where person alerts go: "phone" (shown on the iPhone, and on the watch while the phone is
+    # locked), "watch" (the watch app only) or "all" (both: a locked phone's watch shows two)
+    "alerts_to": "phone",
     # Apple push for person alerts: {"key_file": "/secrets/apns-XXXX.p8", "key_id": "XXXX",
     # "team_id": "..."}; "url" overrides the APNs host (tests)
     "apns": None,
@@ -416,6 +419,7 @@ class Push:
         self.devices = self._load()
         self._jwt = (None, 0.0)
         self._client = None
+        self.alerts_to = None       # the hub's alerts_to setting (kept current by the hub)
 
     def _load(self):
         try:
@@ -511,9 +515,11 @@ class Push:
     async def send(self, cam_id, cam_name, test=False, target=None, role="other"):
         """target: "watch", "phone" or "all"; default is the apns "targets" setting (watch).
         Sending to both makes a locked iPhone mirror its copy to the watch: two alerts."""
-        target = target or self.cfg.get("targets", "watch")
+        target = target or self.alerts_to or self.cfg.get("targets", "phone")
         if not self.devices:
             return
+        if target != "all" and target not in {self._kind(d["topic"]) for d in self.devices.values()}:
+            target = "all"     # e.g. "phone" chosen but only a watch is paired: still alert
         self._http()
         payload = {
             "aps": {"alert": {"title": "Someone's at the door" if role == "door" else "Person detected",
@@ -587,6 +593,8 @@ class Hub:
         self.public_host = settings["public_host"] or lan_ip()
         self.cameras = {c["id"]: Camera(self._resolve(c), settings, detector, self) for c in settings["cameras"]}
         self.push = Push(settings["apns"], DATA_DIR / "devices.json") if settings.get("apns") else None
+        if self.push:
+            self.push.alerts_to = settings.get("alerts_to")
 
     # ---- detector selection --------------------------------------------------------------
 
@@ -1119,7 +1127,7 @@ class Hub:
         return web.json_response({"ok": True})
 
     LIVE_SETTINGS = {"detect_power", "detect_fps", "confidence", "hide_after_seconds", "allow_legacy_token", "remote_url",
-                     "hub_name"}
+                     "hub_name", "alerts_to"}
 
     async def admin_settings(self, request):
         patch = await self._json_body(request)
@@ -1130,6 +1138,8 @@ class Hub:
         live = set(patch) & self.LIVE_SETTINGS
         for k in live:
             self.settings[k] = patch[k]
+        if "alerts_to" in live and self.push:
+            self.push.alerts_to = patch["alerts_to"]
         if live & {"detect_power", "detect_fps"} and self.frigate is None and self.settings["model"] == "auto":
             await asyncio.get_running_loop().run_in_executor(None, self._rebuild_detector)
         return web.json_response({"settings": settings, "restart_needed": bool(set(patch) - self.LIVE_SETTINGS)})
@@ -1271,7 +1281,8 @@ class Hub:
         return {"hub_id": self.pairing.hub_id, "name": self.settings["hub_name"], "version": VERSION,
                 "fingerprint": self.pairing.fingerprint, "https_port": self.settings["https_port"],
                 "http_port": self.settings["port"], "address": self.public_host,
-                "remote_url": self.settings.get("remote_url")}
+                "remote_url": self.settings.get("remote_url"),
+                "alerts_to": self.settings.get("alerts_to", "phone"), "push": bool(self.push)}
 
     async def watch_hub(self, request):
         return web.json_response(self.hub_info())

@@ -505,12 +505,16 @@ async function loadHubForm() {
   const d = await api("/api/admin/devices");
   $("#hub-name").value = d.hub.name;
   $("#hub-remote").value = d.hub.remote_url || "";
+  $("#hub-alerts-to").value = d.hub.alerts_to || "phone";
+  $("#hub-alerts-to").disabled = !d.hub.push;
+  if (!d.hub.push) $("#hub-alerts-note").textContent = "Push alerts aren't set up on this hub (see the apps guide).";
 }
 $("#hub-form").addEventListener("submit", async e => {
   e.preventDefault();
   const remote = $("#hub-remote").value.trim().replace(/\/+$/, "");
   try {
-    await api("/api/admin/settings", { method: "PUT", body: { hub_name: $("#hub-name").value.trim(), remote_url: remote || null } });
+    await api("/api/admin/settings", { method: "PUT", body: { hub_name: $("#hub-name").value.trim(), remote_url: remote || null,
+                                                               alerts_to: $("#hub-alerts-to").value } });
     $("#hub-note").textContent = remote ? "Saved. Pair your apps again so they learn the away address." : "Saved.";
   } catch (x) { $("#hub-note").textContent = x.message; }
 });

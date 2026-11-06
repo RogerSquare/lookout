@@ -146,10 +146,17 @@
         <div class="row"><button id="restart-btn">Restart hub</button><span class="muted" id="restart-note"></span></div>
       </div>
       <form class="panel grid2" id="hub-form">
-        <h3 class="span2">Name and away address</h3>
+        <h3 class="span2">Name, away address and alerts</h3>
         <label>Hub name <input id="hub-name" maxlength="40" required></label>
         <label>Away address <input id="hub-remote" type="url" spellcheck="false" placeholder="https://lookout.example.com">
           <small class="muted">Where the apps reach the hub when you're out. Leave empty to use the apps at home only. <a href="https://rogersquare.github.io/lookout/away.html" target="_blank" rel="noopener">How to set one up</a></small></label>
+        <label class="span2">Send person alerts to
+          <select id="hub-alerts-to">
+            <option value="phone">iPhone (and Apple Watch while the iPhone is locked)</option>
+            <option value="watch">Apple Watch only</option>
+            <option value="all">Both apps (the watch may show each alert twice)</option>
+          </select>
+          <small class="muted" id="hub-alerts-note">Camera offline notices always go to the iPhone.</small></label>
         <div class="span2 row"><button type="submit">Save</button><span id="hub-note" class="muted"></span></div>
       </form>
       <form class="panel grid2" id="pw-form">

@@ -86,5 +86,31 @@ p._client = Client()
 asyncio.run(p.send_notice("kitchen", "Kitchen is back", "ok", "back"))
 check("watch-only household still gets it", len(p._client.sent) == 1)
 
+# Person alerts follow alerts_to, falling back to whatever app is paired
+both = {"tokW": {"topic": "dev.x.lookout.watchkitapp", "env": "production"},
+        "tokP": {"topic": "dev.x.lookout", "env": "production"}}
+
+
+def routed(alerts_to, devices):
+    p.devices, p._client, p.alerts_to = dict(devices), Client(), alerts_to
+    asyncio.run(p.send("kitchen", "Kitchen"))
+    return sorted(u.rsplit("/", 1)[1] for u, _, _ in p._client.sent)
+
+
+check("alerts_to phone: iPhone only", routed("phone", both) == ["tokP"])
+check("alerts_to watch: watch only", routed("watch", both) == ["tokW"])
+check("alerts_to all: both", routed("all", both) == ["tokP", "tokW"])
+check("default (unset) is the iPhone", routed(None, both) == ["tokP"])
+check("phone chosen, only a watch paired: watch still alerted",
+      routed("phone", {"tokW": both["tokW"]}) == ["tokW"])
+
+import store  # noqa: E402
+st = store.Store.__new__(store.Store)
+try:
+    store.Store.update_settings(st, {"alerts_to": "tv"})
+    check("bad alerts_to rejected", False)
+except store.ConfigError:
+    check("bad alerts_to rejected", True)
+
 print(f"\n{sum(results)}/{len(results)} passed")
 sys.exit(0 if all(results) else 1)

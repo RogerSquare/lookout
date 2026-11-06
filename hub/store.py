@@ -19,6 +19,7 @@ EDITABLE = {
     "detect_fps", "confidence", "trigger_hits", "trigger_window", "hide_after_seconds", "threads",
     "model", "gpu_helper", "gpu_helper_timeout_ms", "go2rtc", "public_host",
     "detect_power", "model_families", "hub_name", "remote_url", "allow_legacy_token",
+    "alerts_to",
 }
 CAMERA_FIELDS = {
     "id", "name", "role", "url", "sub_url", "detect_url", "streams", "hls_src", "hls_variants",
@@ -228,6 +229,8 @@ class Store:
             raise ConfigError("detect_power must be power, balanced or accuracy")
         if "hub_name" in patch and not (isinstance(patch["hub_name"], str) and 0 < len(patch["hub_name"].strip()) <= 40):
             raise ConfigError("hub_name must be 1-40 characters")
+        if "alerts_to" in patch and patch["alerts_to"] not in ("phone", "watch", "all"):
+            raise ConfigError("alerts_to must be phone, watch or all")
         remote = patch.get("remote_url")
         if remote is not None and not (isinstance(remote, str) and re.fullmatch(r"https://[A-Za-z0-9.-]+(:\d+)?", remote)):
             raise ConfigError("remote_url must be an https:// address with no path, e.g. https://lookout.example.com")

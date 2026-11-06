@@ -275,8 +275,8 @@ async def push_checks(s, pushes, data_dir):
     async with s.post(f"{BASE}/api/test", json={"camera": "street", "seconds": 1}) as r:
         pass
     await asyncio.sleep(1)
-    check("push: by default only watch apps get alerts (no doubles via iPhone mirroring)",
-          {p["token"] for p in pushes} == {live}, str([p["token"][:4] for p in pushes]))
+    check("push: by default only the iPhone gets alerts (it mirrors to the watch; no doubles)",
+          {p["token"] for p in pushes} == {phone}, str([p["token"][:4] for p in pushes]))
     pushes.clear()
     async with s.post(f"{BASE}/api/test", json={"camera": "street", "seconds": 1, "push": "phone"}) as r:
         pass
