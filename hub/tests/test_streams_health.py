@@ -1,5 +1,6 @@
-"""go2rtc restream health check: which streams get probed, strikes, and the restart after
-HEALTH_STRIKES bad checks in a row (probe and process faked). Run: python tests/test_streams_health.py"""
+"""go2rtc restream health check: only restreams already pulling from their camera are probed,
+cameras are never contacted directly, strikes, cooldown, and the restart after HEALTH_STRIKES bad
+checks in a row (probe, go2rtc API and process faked). Run: python tests/test_streams_health.py"""
 
 import sys
 import time
@@ -41,16 +42,14 @@ g = streams.Go2rtc("/tmp", 1985, 8555, binary="go2rtc")
 g._text, g.proc, g.started_at = CONFIG, Proc(), time.time() - 600
 restarts = []
 g._restart = lambda: (restarts.append(1), setattr(g, "strikes", {}))
-bad = {"kitchen"}          # restreams with no picture
-dead = set()               # cameras whose own source has no picture
+bad = {"kitchen"}                       # restreams giving no picture
+live = {"kitchen", "kitchen_sd", "bedroom"}  # restreams go2rtc is pulling right now
 probed = []
-SRC = {"rtsp://u:p@10.0.0.5/1": "kitchen", "rtsp://u:p@10.0.0.5/2": "kitchen_sd", "rtsp://10.0.0.6/live": "bedroom"}
+g.live_producers = lambda: None if live is None else set(live)
 
 
 def fake_probe(url, timeout=15):
     probed.append(url)
-    if url in SRC:
-        return SRC[url] not in dead
     return url.rsplit("/", 1)[1] not in bad
 
 
@@ -59,7 +58,7 @@ check("first bad check only counts a strike", g.check_health() == ["kitchen"] an
 check("probes go through the local restream port", probed[0] == "rtsp://127.0.0.1:8555/kitchen")
 g.check_health()
 check("second bad check in a row restarts go2rtc", restarts == [1])
-check("source probed only when the restream fails", "rtsp://10.0.0.6/live" not in probed)
+check("a camera is never contacted directly", all(u.startswith("rtsp://127.0.0.1:8555/") for u in probed), str(set(probed)))
 bad.clear()
 g.check_health()
 check("healthy streams reset their strikes", restarts == [1] and all(v == 0 for v in g.strikes.values()))
@@ -70,13 +69,20 @@ g.check_health()
 bad.add("bedroom")
 g.check_health()
 check("a single blip between good checks never restarts", restarts == [1], str(g.strikes))
-bad, dead = {"kitchen", "kitchen_sd"}, {"kitchen", "kitchen_sd"}
+bad.clear()
+g.check_health()
+
+# Offline or unwatched camera: go2rtc isn't pulling it, so it is not probed at all
+probed.clear()
+bad, live = {"kitchen", "kitchen_sd"}, {"bedroom"}
 for _ in range(4):
     g.check_health()
-check("an offline camera never restarts go2rtc", restarts == [1] and "kitchen" in g.offline, str(g.strikes))
-bad, dead = set(), set()
-g.check_health()
-check("camera back: no longer marked offline", not g.offline)
+check("a camera go2rtc isn't pulling is never probed", probed and all(u.endswith("/bedroom") for u in probed), str(set(probed)))
+check("an offline camera never restarts go2rtc", restarts == [1])
+live = None
+probed.clear()
+check("go2rtc API not answering: no checks", g.check_health() == [] and not probed)
+live = {"kitchen", "kitchen_sd", "bedroom"}
 bad = {"bedroom"}
 g.check_health(); g.check_health()
 check("restarts are rate-limited (cooldown)", restarts == [1], str(restarts))

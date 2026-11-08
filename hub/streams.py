@@ -127,7 +127,6 @@ class Go2rtc:
         self.strikes = {}          # restream name -> failed checks in a row
         self.started_at = 0.0
         self.healed_at = 0.0       # last restart made by the health check
-        self.offline = set()       # cameras whose own source gives no picture (logged once)
 
     @property
     def available(self):
@@ -171,32 +170,44 @@ class Go2rtc:
         threading.Thread(target=run, name="go2rtc-watchdog", daemon=True).start()
         threading.Thread(target=self._health_loop, name="go2rtc-health", daemon=True).start()
 
+    def live_producers(self):
+        """Names of the restreams go2rtc is pulling from their camera right now (None if its API
+        doesn't answer). Asking costs the camera nothing."""
+        import json
+        import urllib.request
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{self.api_port}/api/streams", timeout=5) as r:
+                streams = json.load(r) or {}
+        except Exception:
+            return None
+        return {name for name, st in streams.items()
+                if any(p.get("remote_addr") or p.get("receivers") for p in (st or {}).get("producers") or [])}
+
     def check_health(self):
-        """Probe each camera restream once; restart go2rtc after HEALTH_STRIKES bad checks in a
-        row on any of them. A restream only counts against go2rtc when the camera itself still
-        gives a picture: an offline camera is not fixed by restarting go2rtc (and hammering it
-        with reconnects can wedge a fragile camera). Returns the names that failed this round."""
+        """Restart go2rtc after HEALTH_STRIKES bad checks in a row on a restream that is pulling
+        from its camera but gives no usable picture (the lost-parameter-sets failure).
+
+        Passive towards the cameras: only restreams go2rtc is already pulling are probed (the probe
+        joins that session), and a camera is never contacted directly. A camera that is offline,
+        or that nobody is watching, is left alone: restarting go2rtc can't fix it, and extra
+        connections are what wedges a fragile camera. Returns the names that failed this round."""
         text = self._text
         if not text or not self.proc or self.proc.poll() is not None or time.time() - self.started_at < 60:
             return []
+        live = self.live_producers()
+        if live is None:
+            return []
         failed = []
-        for name, src in restream_sources(text).items():
+        for name in restream_sources(text):
             if self._stop.is_set():
                 return failed
+            if name not in live:
+                self.strikes[name] = 0
+                continue
             if has_video(f"rtsp://127.0.0.1:{self.rtsp_port}/{name}"):
                 self.strikes[name] = 0
-                if name in self.offline:
-                    self.offline.discard(name)
-                    log.info("go2rtc: %s has a picture again", name)
                 continue
             failed.append(name)
-            if src.startswith("rtsp") and not has_video(src):
-                self.strikes[name] = 0
-                if name not in self.offline:
-                    self.offline.add(name)
-                    log.warning("go2rtc: camera for %s gives no picture itself (offline?); not restarting go2rtc", name)
-                continue
-            self.offline.discard(name)
             self.strikes[name] = self.strikes.get(name, 0) + 1
         bad = [n for n, k in self.strikes.items() if k >= HEALTH_STRIKES]
         if bad and time.time() - self.healed_at >= HEALTH_COOLDOWN:
