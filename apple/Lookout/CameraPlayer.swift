@@ -27,6 +27,12 @@ struct CameraPlayer: View {
     @State private var flash = false
     @State private var photosDenied = false
     @State private var saved = false
+    /// Move mode (cameras that can turn): a drag on the picture turns the camera instead of
+    /// swiping to the next one
+    @State private var moveMode = false
+    @State private var turnDrag: CGSize = .zero
+    @State private var turning = false
+    @State private var turnError: String?
 
     init(cameras: [HubCamera], client: HubClient, startID: String, close: @escaping () -> Void) {
         self.cameras = cameras
@@ -73,7 +79,15 @@ struct CameraPlayer: View {
             PlayerAudio.end()
         }
         .onChange(of: model.muted) { _, muted in PlayerAudio.start(muted: muted) }
-        .onChange(of: currentID) { _, _ in resetZoom(animated: false) }
+        .onChange(of: currentID) { _, _ in
+            resetZoom(animated: false)
+            if current?.can("ptz") != true { moveMode = false }
+        }
+        .alert("Couldn't turn the camera", isPresented: Binding(get: { turnError != nil }, set: { if !$0 { turnError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(turnError ?? "")
+        }
         .alert("Lookout can't add photos", isPresented: $photosDenied) {
             Button("Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
@@ -166,7 +180,7 @@ struct CameraPlayer: View {
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentID)
         .scrollIndicators(.hidden)
-        .scrollDisabled(zoom > 1 || cameras.count < 2)
+        .scrollDisabled(zoom > 1 || cameras.count < 2 || moveMode)
         .background(.black)
     }
 
@@ -187,10 +201,12 @@ struct CameraPlayer: View {
                     .opacity(flash ? 0.7 : 0)
                     .allowsHitTesting(false)
             }
+            .overlay { if moveMode { turnGuide(geo.size) } }
             .contentShape(Rectangle())
             .gesture(magnify(geo.size))
             .gesture(drag(geo.size), including: zoom > 1 ? .all : .subviews)
-            .onTapGesture(count: 2) { point in doubleTap(at: point, in: geo.size) }
+            .gesture(turn(cam, geo.size), including: moveMode && zoom == 1 ? .all : .subviews)
+            .onTapGesture(count: 2) { point in if !moveMode { doubleTap(at: point, in: geo.size) } }
             .onTapGesture { toggleControls() }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(cam.name), live")
@@ -259,6 +275,23 @@ struct CameraPlayer: View {
                 }
                 .disabled(!pip.possible)
             }
+            if current?.can("ptz") == true {
+                Button {
+                    moveMode.toggle()
+                    if moveMode { resetZoom(animated: true) }
+                    scheduleHide()
+                } label: {
+                    Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(moveMode ? Color.black : Color.primary)
+                        .frame(width: 50, height: 50)
+                        .background(Circle().fill(moveMode ? Color.white : Color.clear))
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("Move Camera")
+                .accessibilityValue(moveMode ? "On: drag the picture to turn the camera" : "Off")
+            }
             if current?.offers("hd") == true {
                 Button {
                     hd.toggle()
@@ -300,6 +333,54 @@ struct CameraPlayer: View {
                                         height: offsetBase.height + value.translation.height), size)
             }
             .onEnded { _ in offsetBase = offset }
+    }
+
+    /// Move mode: drag the picture the way you want to look. Dragging across half the picture is
+    /// a full step (about 30 degrees); the camera turns once the finger lifts.
+    private func turn(_ cam: HubCamera, _ size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in turnDrag = value.translation }
+            .onEnded { value in
+                turnDrag = .zero
+                // Dragging the picture right shows what's to the left: the camera turns left
+                let pan = max(-1, min(1, -value.translation.width / max(1, size.width / 2)))
+                let tilt = max(-1, min(1, value.translation.height / max(1, size.height / 2)))
+                guard abs(pan) > 0.08 || abs(tilt) > 0.08, !turning else { return }
+                turning = true
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Task {
+                    defer { turning = false }
+                    do {
+                        try await client.ptz(cam, pan: abs(pan) > 0.08 ? pan : 0, tilt: abs(tilt) > 0.08 ? tilt : 0)
+                    } catch HubError.status(409) {
+                        // still moving from the last drag
+                    } catch {
+                        turnError = error.localizedDescription
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    }
+                }
+            }
+    }
+
+    /// Where the camera will turn, while dragging; a spinner while it's moving.
+    private func turnGuide(_ size: CGSize) -> some View {
+        ZStack {
+            if turning {
+                ProgressView().controlSize(.large).tint(.white)
+            } else if turnDrag != .zero {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(18)
+                    .glassEffect(.regular, in: .circle)
+                    // points the way the camera will look: against the drag
+                    .rotationEffect(.radians(atan2(-turnDrag.width, turnDrag.height)))
+            } else {
+                RoundedRectangle(cornerRadius: 0)
+                    .strokeBorder(Color.white.opacity(0.6), lineWidth: 3)
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     /// 1x <-> 2x, zooming in on the spot that was tapped.
@@ -550,12 +631,13 @@ enum PlayerAudio {
 
 /// What a camera can be told to do, from the hub's `caps` (and the older `ptz` flag).
 enum CameraControl: Hashable {
-    case panTilt, sleep, nightVision
+    case panTilt, presets, sleep, nightVision
 
     static func available(_ cam: HubCamera) -> [CameraControl] {
         let caps = Set(cam.caps ?? [])
         var list: [CameraControl] = []
         if cam.ptz == true || caps.contains("ptz") { list.append(.panTilt) }
+        if caps.contains("presets") { list.append(.presets) }
         if caps.contains("sleep") { list.append(.sleep) }
         if caps.contains("night_vision") { list.append(.nightVision) }
         return list
@@ -588,6 +670,7 @@ struct CameraControlsBar: View {
                             } label: {
                                 Image(systemName: "moon.stars.fill")
                                     .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(Color.primary)
                                     .frame(width: 50, height: 50)
                             }
                             .glassEffect(.regular.interactive(), in: .circle)
@@ -596,7 +679,10 @@ struct CameraControlsBar: View {
                     }
                 }
                 if controls.contains(.panTilt) {
-                    PanTiltPad(camera: camera, client: client)
+                    VStack(spacing: 12) {
+                        PanTiltPad(camera: camera, client: client)
+                        if controls.contains(.presets) { PresetChips(camera: camera, client: client) }
+                    }
                 }
             }
             .alert("Couldn't change the camera", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
@@ -641,3 +727,43 @@ private struct FakeLandscape: ViewModifier {
     }
 }
 #endif
+
+/// The camera's saved positions as chips (1, 2, 3...): tap one to turn there. Positions are
+/// saved in the Wyze app; the bridge can't save them yet.
+struct PresetChips: View {
+    let camera: HubCamera
+    let client: HubClient
+    @State private var presets: [PTZPreset] = []
+    @State private var busy: Int?
+    @State private var failed = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(presets.indices, id: \.self) { i in
+                Button {
+                    Task { await go(i + 1) }
+                } label: {
+                    ZStack {
+                        if busy == i + 1 { ProgressView().controlSize(.small) }
+                        else { Text("\(i + 1)").font(.subheadline.weight(.semibold)) }
+                    }
+                    .frame(width: 40, height: 36)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .accessibilityLabel("Saved position \(i + 1)")
+            }
+        }
+        .sensoryFeedback(.error, trigger: failed)
+        .task(id: camera.id) {
+            presets = (try? await client.ptzPresets(camera)) ?? []
+        }
+    }
+
+    private func go(_ n: Int) async {
+        guard busy == nil else { return }
+        busy = n
+        defer { busy = nil }
+        do { try await client.ptz(camera, preset: n) } catch HubError.status(409) {} catch { failed.toggle() }
+    }
+}

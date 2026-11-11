@@ -77,6 +77,20 @@ struct CameraTile: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Self.label(camera))
         .accessibilityAddTraits(.isButton)
+        .contextMenu {
+            if camera.can("ptz") {
+                Section("Turn") {
+                    Button { turn(-1, 0) } label: { Label("Left", systemImage: "arrow.left") }
+                    Button { turn(1, 0) } label: { Label("Right", systemImage: "arrow.right") }
+                    Button { turn(0, 1) } label: { Label("Up", systemImage: "arrow.up") }
+                    Button { turn(0, -1) } label: { Label("Down", systemImage: "arrow.down") }
+                }
+            }
+        }
+    }
+
+    private func turn(_ pan: Double, _ tilt: Double) {
+        Task { try? await client.ptz(camera, pan: pan, tilt: tilt) }
     }
 
     static func label(_ camera: HubCamera) -> String {
