@@ -291,7 +291,7 @@ struct DuoOpenFocus: View {
                 ForEach(cameras) { cam in
                     let on = cam.id == focused?.id
                     Button { focusedID = cam.id } label: {
-                        CameraTile(camera: cam, client: client, live: live && !on, frameWidth: 320,
+                        CameraTile(camera: cam, client: client, live: live, frameWidth: 320,
                                    transport: .mjpeg(fps: 2), compact: true, cornerRadius: 12)
                             .frame(width: 168, height: 95)
                             .overlay {
@@ -406,7 +406,7 @@ private struct ClipCard: View {
     }
 }
 
-/// Today from 6 AM (or midnight, before then) to now, with a mark for each person event.
+/// Today from 6 AM (earlier if someone came before then) to now, with a mark for each person event.
 struct DayTimeline: View {
     let events: [CameraEvent]
     let select: (CameraEvent) -> Void
@@ -415,8 +415,10 @@ struct DayTimeline: View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             let now = context.date
             let midnight = Calendar.current.startOfDay(for: now)
-            let sixAM = midnight.addingTimeInterval(6 * 3600)
-            let start = now > sixAM.addingTimeInterval(3600) ? sixAM : midnight
+            let first = events.map(\.date).filter { $0 >= midnight }.min() ?? now
+            let earliest = min(midnight.addingTimeInterval(6 * 3600), first, now.addingTimeInterval(-3600))
+            // Back to the whole hour before the earliest moment shown
+            let start = max(midnight, Calendar.current.dateInterval(of: .hour, for: earliest)?.start ?? earliest)
             let span = max(1, now.timeIntervalSince(start))
             VStack(spacing: 6) {
                 GeometryReader { geo in
@@ -438,9 +440,9 @@ struct DayTimeline: View {
                 }
                 .frame(height: 36)
                 HStack {
-                    Text(start, format: .dateTime.hour())
+                    Text(start, format: .dateTime.hour().minute())
                     Spacer()
-                    Text(start.addingTimeInterval(span / 2), format: .dateTime.hour())
+                    Text(start.addingTimeInterval(span / 2), format: .dateTime.hour().minute())
                     Spacer()
                     Text("Now")
                 }
@@ -498,7 +500,7 @@ struct DuoBook: View {
                     ForEach(cameras) { cam in
                         let on = cam.id == focused?.id
                         Button { focusedID = cam.id } label: {
-                            CameraTile(camera: cam, client: client, live: live && !on, frameWidth: 320,
+                            CameraTile(camera: cam, client: client, live: live, frameWidth: 320,
                                        transport: .mjpeg(fps: 2), compact: true, cornerRadius: 12)
                                 .aspectRatio(16 / 9, contentMode: .fit)
                                 .overlay {
