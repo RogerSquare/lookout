@@ -45,6 +45,8 @@ struct CameraPlayer: View {
 
     private var variant: String {
         guard let cam = current else { return "phone" }
+        // An on-demand camera's own stream is small already: converting it only adds a second
+        if cam.isOnDemand && cam.offers("hd") { return "hd" }
         return hd && cam.offers("hd") ? "hd" : "phone"
     }
 
