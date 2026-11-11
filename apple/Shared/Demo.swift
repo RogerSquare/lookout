@@ -28,7 +28,7 @@ enum Demo {
                       hlsVariants: ["phone", "hd"],
                       caps: i == 1 ? ["sleep", "night_vision", "status_light", "ptz", "presets"]
                                    : ["sleep", "night_vision", "status_light"],
-                      asleep: i == 2)
+                      asleep: i == 2, onDemand: i == 4)
         }
     }
 
