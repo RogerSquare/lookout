@@ -83,19 +83,34 @@ struct PhoneHome: View {
     @StateObject private var browser = HubBrowser()       // follows the hub on the home network
     @ObservedObject private var prefs = Prefs.shared
     @Environment(\.scenePhase) private var phase
-    @State private var fullScreen: HubCamera?
+    /// The camera open in the full-screen player
+    @State private var playerID: String?
     @ObservedObject private var router = AlertRouter.shared
     // -openSettings / -openArrange at launch (screenshots / testing) open those sheets;
     // -homeLayout list|grid|focus picks the layout (it's a stored setting, read from the arguments)
     @State private var showSettings = ProcessInfo.processInfo.arguments.contains("-openSettings")
     @State private var showArrange = ProcessInfo.processInfo.arguments.contains("-openArrange")
+    #if DEBUG
+    /// -openPlayer <camera id> at launch (screenshots / testing)
+    private static let openPlayer: String? = {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-openPlayer"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }()
+    @State private var openedPlayer = false
+    #endif
     @AppStorage("homeLayout") private var layout = HomeLayout.list
     @State private var focusedID: String?
 
     /// The cameras the home screen shows, in the user's order
     private var cameras: [HubCamera] { prefs.onPhone(store.cameras) }
     /// Streams run only while the app is in front and no camera is full screen
-    private var live: Bool { phase == .active && fullScreen == nil }
+    private var live: Bool { phase == .active && playerID == nil }
+    /// What the player swipes through: the home screen's cameras, or every camera when the one
+    /// opened (from an alert) is hidden here
+    private var playerCameras: [HubCamera] {
+        cameras.contains { $0.id == playerID } ? cameras : prefs.sorted(store.cameras)
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -103,7 +118,7 @@ struct PhoneHome: View {
             NavigationStack {
                 Group {
                     if wall {
-                        CameraWall(cameras: cameras, client: store.client, live: live) { fullScreen = $0 }
+                        CameraWall(cameras: cameras, client: store.client, live: live) { playerID = $0.id }
                     } else {
                         ScrollView {
                             VStack(spacing: 16) {
@@ -128,7 +143,7 @@ struct PhoneHome: View {
                 GeometryReader { geo in
                     let full = CGSize(width: geo.size.width + geo.safeAreaInsets.leading + geo.safeAreaInsets.trailing,
                                       height: geo.size.height + geo.safeAreaInsets.top + geo.safeAreaInsets.bottom)
-                    CameraWall(cameras: cameras, client: store.client, live: live) { fullScreen = $0 }
+                    CameraWall(cameras: cameras, client: store.client, live: live) { playerID = $0.id }
                         .frame(width: full.height, height: full.width)
                         .rotationEffect(.degrees(90))
                         .frame(width: full.width, height: full.height)
@@ -144,28 +159,23 @@ struct PhoneHome: View {
         .sheet(isPresented: $showArrange) {
             ArrangeCamerasView(store: store)
         }
-        .fullScreenCover(item: $fullScreen) { cam in
-            ZStack(alignment: .topTrailing) {
-                LiveCameraView(camera: cam, client: store.client, frameWidth: 1280, transport: .hls(variant: "phone"))
-                    .ignoresSafeArea()
-                Button { fullScreen = nil } label: {
-                    Image(systemName: "xmark.circle.fill").font(.title).symbolRenderingMode(.hierarchical)
-                }
-                .accessibilityLabel("Close")
-                .padding()
+        .fullScreenCover(isPresented: Binding(get: { playerID != nil }, set: { if !$0 { playerID = nil } })) {
+            if let id = playerID {
+                CameraPlayer(cameras: playerCameras, client: store.client, startID: id) { playerID = nil }
             }
-            .overlay(alignment: .bottomTrailing) {
-                if cam.ptz == true {
-                    PanTiltPad(camera: cam, client: store.client)
-                        .padding(24)
-                }
-            }
-            .background(.black)
         }
         // Opened from a person alert: show that camera full screen once the list has it
         .onChange(of: router.requested) { _, id in openRequested(id) }
         .onChange(of: store.cameras) { _, _ in openRequested(router.requested) }
         .onAppear { store.start(); browser.start() }
+        #if DEBUG
+        .onChange(of: store.cameras) { _, cams in
+            if let id = Self.openPlayer, !openedPlayer, cams.contains(where: { $0.id == id }) {
+                openedPlayer = true
+                playerID = id
+            }
+        }
+        #endif
         .onChange(of: phase) { _, p in
             if p == .active {
                 store.start()
@@ -213,13 +223,13 @@ struct PhoneHome: View {
         switch layout {
         case .list:
             ForEach(cameras) { cam in
-                Button { fullScreen = cam } label: { CameraCard(camera: cam, client: store.client, live: live) }
+                Button { playerID = cam.id } label: { CameraCard(camera: cam, client: store.client, live: live) }
                     .buttonStyle(.plain)
             }
         case .grid:
-            CameraGrid(cameras: cameras, client: store.client, live: live) { fullScreen = $0 }
+            CameraGrid(cameras: cameras, client: store.client, live: live) { playerID = $0.id }
         case .focus:
-            CameraFocus(cameras: cameras, client: store.client, live: live, focusedID: $focusedID) { fullScreen = $0 }
+            CameraFocus(cameras: cameras, client: store.client, live: live, focusedID: $focusedID) { playerID = $0.id }
         }
     }
 
@@ -253,7 +263,7 @@ extension PhoneHome {
         showSettings = false
         showArrange = false
         focusedID = id
-        fullScreen = cam
+        playerID = cam.id
         router.requested = nil
     }
 }

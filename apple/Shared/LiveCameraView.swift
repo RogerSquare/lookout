@@ -1,5 +1,8 @@
 import AVFoundation
 import AVKit
+#if os(iOS)
+import CoreImage
+#endif
 import SwiftUI
 
 /// How a live view gets its picture.
@@ -20,7 +23,44 @@ final class LiveModel: ObservableObject {
     @Published var player: AVPlayer?
     @Published var playing = false
     @Published var video = false   // the picture is actually moving: show the player, not the still
+    /// The stream has a sound track (only known once the video is playing)
+    @Published var hasAudio = false
+    /// Sound off by default; applies to the current player and any restarted one
+    @Published var muted = true {
+        didSet { player?.isMuted = muted }
+    }
+    /// Keep a video output on the player so `snapshot()` can grab a full-size frame (iPhone
+    /// full-screen player only: it costs a copy per frame)
+    var capturesFrames = false
     private var observer: NSKeyValueObservation?
+    #if os(iOS)
+    private var output: AVPlayerItemVideoOutput?
+    #endif
+
+    /// Forget the last camera's picture before showing another one
+    func reset() {
+        stop()
+        still = nil
+        hasAudio = false
+    }
+
+    #if os(iOS)
+    /// The picture on screen right now: the video's current frame at full size when it's
+    /// playing, otherwise the latest still.
+    func snapshot() -> UIImage? {
+        if video, let output, let item = player?.currentItem {
+            let time = output.itemTime(forHostTime: CACurrentMediaTime())
+            let at = time.isValid ? time : item.currentTime()
+            if let buffer = output.copyPixelBuffer(forItemTime: at, itemTimeForDisplay: nil) {
+                let image = CIImage(cvPixelBuffer: buffer)
+                if let cg = CIContext().createCGImage(image, from: image.extent) {
+                    return UIImage(cgImage: cg)
+                }
+            }
+        }
+        return still
+    }
+    #endif
 
     func run(_ cam: HubCamera, client: HubClient, width: Int, transport: LiveTransport) async {
         #if DEBUG && os(iOS)
@@ -92,6 +132,8 @@ final class LiveModel: ObservableObject {
             if let p = player, p.rate == 0 { p.play() }
             let moving = playing && Date().timeIntervalSince(lastProgress) < 1.2
             if video != moving { video = moving }
+            let audio = player?.currentItem?.tracks.contains { $0.assetTrack?.mediaType == .audio } ?? false
+            if audio && !hasAudio { hasAudio = true }
             if moving { VideoGuard.started() }
             if !moving, let data = try? await client.frame(cam, width: width), let img = UIImage(data: data) {
                 still = img
@@ -114,8 +156,16 @@ final class LiveModel: ObservableObject {
         VideoGuard.starting()
         let item = AVPlayerItem(url: url)
         item.preferredForwardBufferDuration = 1
+        #if os(iOS)
+        if capturesFrames {
+            let out = AVPlayerItemVideoOutput(pixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+            item.add(out)
+            output = out
+        }
+        #endif
         let p = AVPlayer(playerItem: item)
-        p.isMuted = true
+        p.isMuted = muted
         p.automaticallyWaitsToMinimizeStalling = false
         observer = p.observe(\.timeControlStatus, options: [.new]) { [weak self] p, _ in
             let isPlaying = p.timeControlStatus == .playing
@@ -129,6 +179,9 @@ final class LiveModel: ObservableObject {
         player?.pause()
         player = nil
         observer = nil
+        #if os(iOS)
+        output = nil
+        #endif
         playing = false
         video = false
     }
