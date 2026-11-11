@@ -268,6 +268,13 @@ final class CameraStore: ObservableObject {
     }
 
     func refresh() async {
+        #if DEBUG && os(iOS)
+        if let n = Demo.count {
+            let demo = Demo.cameras(n)
+            if demo != cameras { cameras = demo }
+            return
+        }
+        #endif
         do {
             let list = try await client.cameras()
             if list.cameras != cameras { cameras = list.cameras }

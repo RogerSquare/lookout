@@ -16,14 +16,18 @@ final class Prefs: NSObject, ObservableObject {
     @Published private(set) var hiddenOnWatch: Set<String>
     /// Camera ids in the order the user arranged them (cameras not listed go last, hub order)
     @Published private(set) var order: [String]
+    /// Camera ids hidden from the iPhone's home screen (iPhone only; the watch has its own)
+    @Published private(set) var hiddenOnPhone: Set<String>
 
     private let defaults = UserDefaults.standard
     private let hiddenKey = "hiddenOnWatch"
     private let orderKey = "cameraOrder"
+    private let phoneHiddenKey = "hiddenOnPhone"
 
     private override init() {
         hiddenOnWatch = Set(UserDefaults.standard.stringArray(forKey: hiddenKey) ?? [])
         order = UserDefaults.standard.stringArray(forKey: orderKey) ?? []
+        hiddenOnPhone = Set(UserDefaults.standard.stringArray(forKey: phoneHiddenKey) ?? [])
         super.init()
         if WCSession.isSupported() {
             WCSession.default.delegate = self
@@ -38,6 +42,21 @@ final class Prefs: NSObject, ObservableObject {
         if show { hidden.remove(id) } else { hidden.insert(id) }
         apply(hidden)
         push()
+    }
+
+    func showsOnPhone(_ id: String) -> Bool { !hiddenOnPhone.contains(id) }
+
+    func setShowsOnPhone(_ id: String, _ show: Bool) {
+        var hidden = hiddenOnPhone
+        if show { hidden.remove(id) } else { hidden.insert(id) }
+        guard hidden != hiddenOnPhone else { return }
+        hiddenOnPhone = hidden
+        defaults.set(Array(hidden).sorted(), forKey: phoneHiddenKey)
+    }
+
+    /// The cameras the iPhone's home screen shows: the user's order, hidden ones left out.
+    func onPhone(_ cameras: [HubCamera]) -> [HubCamera] {
+        sorted(cameras).filter { showsOnPhone($0.id) }
     }
 
     /// Cameras sorted by the user's order; ones never arranged keep the hub's order, after them.

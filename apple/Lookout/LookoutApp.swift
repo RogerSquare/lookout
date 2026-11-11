@@ -23,9 +23,16 @@ struct RootView: View {
     @ObservedObject private var pairing = PhonePairing.shared
     @Environment(\.scenePhase) private var phase
 
+    /// -LookoutDemoCameras n (debug builds): fake cameras, no hub or pairing needed
+    #if DEBUG
+    private static let demo = Demo.enabled
+    #else
+    private static let demo = false
+    #endif
+
     var body: some View {
         Group {
-            if linkStore.link == nil {
+            if linkStore.link == nil && !Self.demo {
                 PairingView()
             } else {
                 PhoneHome()
@@ -69,55 +76,73 @@ struct RootView: View {
     }
 }
 
-/// Every camera live, stacked; tap one for full screen.
+/// The cameras laid out the way the user picked (List, Grid or Focus), or a wall of every camera
+/// when the phone is turned sideways. Tap one for full screen.
 struct PhoneHome: View {
     @StateObject private var store = CameraStore()
     @StateObject private var browser = HubBrowser()       // follows the hub on the home network
+    @ObservedObject private var prefs = Prefs.shared
     @Environment(\.scenePhase) private var phase
     @State private var fullScreen: HubCamera?
     @ObservedObject private var router = AlertRouter.shared
-    // -openSettings at launch (screenshots / testing) opens straight into Settings
+    // -openSettings / -openArrange at launch (screenshots / testing) open those sheets;
+    // -homeLayout list|grid|focus picks the layout (it's a stored setting, read from the arguments)
     @State private var showSettings = ProcessInfo.processInfo.arguments.contains("-openSettings")
+    @State private var showArrange = ProcessInfo.processInfo.arguments.contains("-openArrange")
+    @AppStorage("homeLayout") private var layout = HomeLayout.list
+    @State private var focusedID: String?
+
+    /// The cameras the home screen shows, in the user's order
+    private var cameras: [HubCamera] { prefs.onPhone(store.cameras) }
+    /// Streams run only while the app is in front and no camera is full screen
+    private var live: Bool { phase == .active && fullScreen == nil }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    if store.unauthorized {
-                        ContentUnavailableView {
-                            Label("This iPhone was removed", systemImage: "lock.slash")
-                        } description: {
-                            Text("The hub no longer accepts this iPhone. Pair it again from the hub's setup page.")
-                        } actions: {
-                            Button("Pair Again") { HubSession.shared.clear() }
-                                .buttonStyle(.glassProminent)
+        GeometryReader { geo in
+            let wall = geo.size.width > geo.size.height && !cameras.isEmpty
+            NavigationStack {
+                Group {
+                    if wall {
+                        CameraWall(cameras: cameras, client: store.client, live: live) { fullScreen = $0 }
+                    } else {
+                        ScrollView {
+                            VStack(spacing: 16) {
+                                emptyState
+                                cameraLayout
+                            }
+                            .padding()
                         }
-                    } else if store.cameras.isEmpty {
-                        if store.unreachable {
-                            ContentUnavailableView("Can't reach your hub", systemImage: "wifi.exclamationmark",
-                                                   description: Text(HubSession.shared.link?.remoteURL == nil
-                                                       ? "Lookout reaches your hub on your home network. Connect to it and try again."
-                                                       : "Your hub isn't answering at home or through its away address."))
-                        } else {
-                            ProgressView().padding(.top, 80)
-                        }
-                    }
-                    ForEach(Prefs.shared.sorted(store.cameras)) { cam in
-                        Button { fullScreen = cam } label: { CameraCard(camera: cam, client: store.client,
-                                                                        live: phase == .active && fullScreen == nil) }
-                            .buttonStyle(.plain)
                     }
                 }
-                .padding()
+                .navigationTitle("Lookout")
+                .toolbar(wall ? .hidden : .visible, for: .navigationBar)
+                .toolbar { toolbar }
             }
-            .navigationTitle("Lookout")
-            .toolbar {
-                Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel("Settings")
+            .statusBarHidden(wall)
+        }
+        #if DEBUG
+        // -LookoutFakeLandscape: the sideways wall drawn turned on an upright screen (the
+        // simulator can't be rotated over SSH); rotate the screenshot 90° to check it
+        .overlay {
+            if ProcessInfo.processInfo.arguments.contains("-LookoutFakeLandscape") {
+                GeometryReader { geo in
+                    let full = CGSize(width: geo.size.width + geo.safeAreaInsets.leading + geo.safeAreaInsets.trailing,
+                                      height: geo.size.height + geo.safeAreaInsets.top + geo.safeAreaInsets.bottom)
+                    CameraWall(cameras: cameras, client: store.client, live: live) { fullScreen = $0 }
+                        .frame(width: full.height, height: full.width)
+                        .rotationEffect(.degrees(90))
+                        .frame(width: full.width, height: full.height)
+                }
+                .ignoresSafeArea()
+                .background(.black)
             }
         }
+        #endif
         .sheet(isPresented: $showSettings) {
             SettingsView(store: store)
+        }
+        .sheet(isPresented: $showArrange) {
+            ArrangeCamerasView(store: store)
         }
         .fullScreenCover(item: $fullScreen) { cam in
             ZStack(alignment: .topTrailing) {
@@ -126,6 +151,7 @@ struct PhoneHome: View {
                 Button { fullScreen = nil } label: {
                     Image(systemName: "xmark.circle.fill").font(.title).symbolRenderingMode(.hierarchical)
                 }
+                .accessibilityLabel("Close")
                 .padding()
             }
             .overlay(alignment: .bottomTrailing) {
@@ -151,17 +177,88 @@ struct PhoneHome: View {
             }
         }
     }
+
+    @ViewBuilder private var emptyState: some View {
+        if store.unauthorized {
+            ContentUnavailableView {
+                Label("This iPhone was removed", systemImage: "lock.slash")
+            } description: {
+                Text("The hub no longer accepts this iPhone. Pair it again from the hub's setup page.")
+            } actions: {
+                Button("Pair Again") { HubSession.shared.clear() }
+                    .buttonStyle(.glassProminent)
+            }
+        } else if store.cameras.isEmpty {
+            if store.unreachable {
+                ContentUnavailableView("Can't reach your hub", systemImage: "wifi.exclamationmark",
+                                       description: Text(HubSession.shared.link?.remoteURL == nil
+                                           ? "Lookout reaches your hub on your home network. Connect to it and try again."
+                                           : "Your hub isn't answering at home or through its away address."))
+            } else {
+                ProgressView().padding(.top, 80)
+            }
+        } else if cameras.isEmpty {
+            ContentUnavailableView {
+                Label("All cameras are hidden", systemImage: "eye.slash")
+            } description: {
+                Text("Choose which cameras show here. Hidden cameras still send alerts.")
+            } actions: {
+                Button("Arrange Cameras") { showArrange = true }
+                    .buttonStyle(.glassProminent)
+            }
+        }
+    }
+
+    @ViewBuilder private var cameraLayout: some View {
+        switch layout {
+        case .list:
+            ForEach(cameras) { cam in
+                Button { fullScreen = cam } label: { CameraCard(camera: cam, client: store.client, live: live) }
+                    .buttonStyle(.plain)
+            }
+        case .grid:
+            CameraGrid(cameras: cameras, client: store.client, live: live) { fullScreen = $0 }
+        case .focus:
+            CameraFocus(cameras: cameras, client: store.client, live: live, focusedID: $focusedID) { fullScreen = $0 }
+        }
+    }
+
+    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                Picker("Layout", selection: $layout) {
+                    ForEach(HomeLayout.allCases) { option in
+                        Label(option.title, systemImage: option.symbol).tag(option)
+                    }
+                }
+                Divider()
+                Button { showArrange = true } label: {
+                    Label("Arrange Cameras", systemImage: "arrow.up.arrow.down")
+                }
+            } label: {
+                Image(systemName: layout.symbol)
+            }
+            .accessibilityLabel("Layout")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                .accessibilityLabel("Settings")
+        }
+    }
 }
 
 extension PhoneHome {
     fileprivate func openRequested(_ id: String?) {
         guard let id, let cam = store.cameras.first(where: { $0.id == id }) else { return }
         showSettings = false
+        showArrange = false
+        focusedID = id
         fullScreen = cam
         router.requested = nil
     }
 }
 
+/// The List layout's card: the picture, then the name and person status under it.
 struct CameraCard: View {
     let camera: HubCamera
     let client: HubClient
@@ -169,21 +266,15 @@ struct CameraCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Group {
-                if live {
-                    LiveCameraView(camera: camera, client: client, frameWidth: 800, transport: .hls(variant: "phone"))
-                } else {
-                    Color.black
-                }
-            }
-            .aspectRatio(16 / 9, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            CameraTile(camera: camera, client: client, live: live, frameWidth: 800, showsName: false)
+                .aspectRatio(16 / 9, contentMode: .fit)
             HStack {
                 Text(camera.name).font(.headline)
                 Spacer()
                 PersonStatus(camera: camera).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 4)
+            .accessibilityHidden(true)
         }
     }
 }
