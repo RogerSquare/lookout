@@ -61,6 +61,10 @@ from detect import NO_BOXES
 from frigate import Frigate, FrigateError
 from pairing import Pairing
 from ptz import PTZ, PTZError
+
+
+class ControlBusy(Exception):
+    """A camera command came too soon after the last one."""
 from store import ConfigError, Store, mask_camera, mask_url
 from streams import Go2rtc, lan_ip, resolve
 
@@ -269,6 +273,7 @@ class Camera:
             # what the apps may ask it to do, and whether the hub put it to sleep
             "caps": self.hub.caps(self),
             "asleep": self.id in self.hub.asleep,
+            "sleep_schedule": (self.hub.store.schedules().get(self.id) if self.hub.store else None),
         }
 
     def _set_connected(self, connected):
@@ -588,6 +593,7 @@ class Hub:
         self.asleep = set()         # camera ids put to sleep (power off), never reported offline
         self._control_locks = {}
         self._control_last = {}
+        self._schedule_done = set()   # scheduled sleeps/wakes already sent (camera:action:date)
         self.choice = None          # what the profile picked: {model, backend, ms, fps}
         self._profile = None
         self.local = (_ExternalDetector() if self.source["type"] == "frigate"
@@ -911,9 +917,20 @@ class Hub:
             raise web.HTTPBadRequest(text="night_vision value must be on, off or auto")
         if action == "status_light" and value not in ("on", "off"):
             raise web.HTTPBadRequest(text="status_light value must be on or off")
+        try:
+            await self.send_control(cam, action, value)
+        except ControlBusy as e:
+            raise web.HTTPConflict(text=str(e))
+        except PTZError as e:
+            raise web.HTTPBadGateway(text=str(e))
+        return web.json_response({"ok": True, "asleep": cam.id in self.asleep})
+
+    async def send_control(self, cam, action, value=None):
+        """Send one command (already checked against the camera's caps). Raises ControlBusy or
+        PTZError."""
         lock = self._control_locks.setdefault(cam.id, asyncio.Lock())
         if lock.locked() or time.monotonic() - self._control_last.get(cam.id, 0) < self.CONTROL_GAP:
-            raise web.HTTPConflict(text="The camera is still busy with the last change. Try again in a moment.")
+            raise ControlBusy("The camera is still busy with the last change. Try again in a moment.")
         async with lock:
             b = self._bridge(cam)
             try:
@@ -923,14 +940,90 @@ class Hub:
                     await b.set("power", "on")
                 else:
                     await b.set(action, value)
-            except PTZError as e:
-                raise web.HTTPBadGateway(text=str(e))
             finally:
                 self._control_last[cam.id] = time.monotonic()
         if action in ("sleep", "wake"):
             self._set_asleep(cam, action == "sleep")
         log.info("%s: %s%s", cam.id, action, f" {value}" if value else "")
-        return web.json_response({"ok": True, "asleep": cam.id in self.asleep})
+
+    # ---- sleep schedules -----------------------------------------------------------------
+
+    SCHEDULE_WINDOW = 180        # a missed tick still fires within this many seconds
+
+    def due_schedule_actions(self, now=None):
+        """[(camera, "sleep" | "wake", key)] due now. A sleep fires on the schedule's days; a wake
+        on the same day, or the next one when it's past midnight (21:00 -> 07:00)."""
+        from datetime import datetime as _dt, timedelta as _td
+        from zoneinfo import ZoneInfo
+        now = now or time.time()
+        due = []
+        for cam_id, sch in (self.store.schedules() if self.store else {}).items():
+            cam = self.cameras.get(cam_id)
+            if cam is None or not sch.get("enabled") or "sleep" not in self.caps(cam):
+                continue
+            local = _dt.fromtimestamp(now, ZoneInfo(sch.get("tz") or "UTC"))
+            overnight = sch["wake"] < sch["sleep"]
+            for action in ("sleep", "wake"):
+                hh, mm = map(int, sch[action].split(":"))
+                at = local.replace(hour=hh, minute=mm, second=0, microsecond=0)
+                if at > local:
+                    at -= _td(days=1)              # the most recent occurrence
+                if (local - at).total_seconds() > self.SCHEDULE_WINDOW:
+                    continue
+                start_day = (at.weekday() - (1 if action == "wake" and overnight else 0)) % 7
+                if start_day not in sch["days"]:
+                    continue
+                key = f"{cam_id}:{action}:{at.date().isoformat()}"
+                if key not in self._schedule_done:
+                    due.append((cam, action, key))
+        return due
+
+    async def _schedule_loop(self):
+        every = float(os.environ.get("LOOKOUT_SCHEDULE_EVERY", 30))
+        while True:
+            await asyncio.sleep(every)
+            for cam, action, key in self.due_schedule_actions():
+                try:
+                    await self.send_control(cam, action)
+                    self._schedule_done.add(key)
+                    log.info("%s: %s on schedule", cam.id, action)
+                except (ControlBusy, PTZError) as e:
+                    log.info("%s: scheduled %s didn't go through yet: %s", cam.id, action, e)
+            if len(self._schedule_done) > 500:
+                self._schedule_done.clear()
+
+    async def _get_schedule(self, cam):
+        return web.json_response({"schedule": (self.store.schedules().get(cam.id))})
+
+    async def _put_schedule(self, cam, body):
+        from store import validate_schedule
+        if not body or body.get("enabled") is False and not body.get("sleep"):
+            self.store.set_schedule(cam.id, None)
+            self.publish(self.state())
+            return web.json_response({"schedule": None})
+        if "sleep" not in self.caps(cam):
+            raise web.HTTPNotFound(text=f"{cam.name} can't sleep")
+        try:
+            sch = validate_schedule(body)
+        except ConfigError as e:
+            raise web.HTTPBadRequest(text=str(e))
+        self.store.set_schedule(cam.id, sch)
+        self.publish(self.state())
+        return web.json_response({"schedule": sch})
+
+    async def watch_get_schedule(self, request):
+        return await self._get_schedule(self._camera(request))
+
+    async def watch_put_schedule(self, request):
+        """{"enabled", "sleep": "21:30", "wake": "07:00", "days": [0..6], "tz": "America/Chicago"},
+        or {} to remove it."""
+        return await self._put_schedule(self._camera(request), await self._json_body(request))
+
+    async def admin_put_schedule(self, request):
+        cam = self.cameras.get(request.match_info["id"])
+        if cam is None:
+            raise web.HTTPNotFound(text="unknown camera")
+        return await self._put_schedule(cam, await self._json_body(request))
 
     async def watch_control(self, request):
         """{"action": "sleep" | "wake" | "night_vision" | "status_light", "value"?: "on"|"off"|"auto"}"""
@@ -1927,6 +2020,7 @@ class Hub:
         await self.advertise()
         asyncio.ensure_future(self._found_loop())
         asyncio.ensure_future(self._bridge_loop())
+        asyncio.ensure_future(self._schedule_loop())
         if self.history_cfg:
             async def connect_history():
                 while self._history is None and self.history_cfg:
@@ -2076,6 +2170,9 @@ class Hub:
         app.router.add_post("/api/admin/cameras/{id}/control", self.admin_control)
         app.router.add_post("/api/watch/cameras/{cam}/control", self.watch_control)
         app.router.add_get("/api/watch/cameras/{cam}/ptz", self.watch_ptz_info)
+        app.router.add_get("/api/watch/cameras/{cam}/schedule", self.watch_get_schedule)
+        app.router.add_put("/api/watch/cameras/{cam}/schedule", self.watch_put_schedule)
+        app.router.add_put("/api/admin/cameras/{id}/schedule", self.admin_put_schedule)
         app.router.add_post("/api/admin/found/{id}/{action}", self.admin_found_action)
         app.router.add_put("/api/admin/history", self.admin_put_history)
         app.router.add_get("/api/watch/cameras/{cam}/visitors", self.watch_visitors)

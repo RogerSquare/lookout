@@ -26,6 +26,8 @@ final class LiveModel: ObservableObject {
     /// somewhere else (a Duo folding, the full-screen player opening) starts with it instead of a
     /// spinner. Small: one image per camera.
     private static var lastFrames: [String: UIImage] = [:]
+    /// The last picture any view had of this camera (shown dimmed while it sleeps)
+    static func lastFrame(_ cameraID: String) -> UIImage? { lastFrames[cameraID] }
     private var cameraID: String?
     @Published var player: AVPlayer?
     @Published var playing = false
@@ -279,11 +281,17 @@ struct PersonStatus: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Circle()
-                // Green = someone's there (matches the watch's green edge); gray idle; red offline
-                .fill(camera.person ? Color.green : (camera.connected ? Color.gray : Color.red))
-                .frame(width: 7, height: 7)
-            if camera.person {
+            if camera.isAsleep {
+                Image(systemName: "moon.fill").font(.system(size: 8)).foregroundStyle(.indigo)
+            } else {
+                Circle()
+                    // Green = someone's there (matches the watch's green edge); gray idle; red offline
+                    .fill(camera.person ? Color.green : (camera.connected ? Color.gray : Color.red))
+                    .frame(width: 7, height: 7)
+            }
+            if camera.isAsleep {
+                Text("Asleep")
+            } else if camera.person {
                 Text("Person now")
             } else if !camera.connected {
                 Text("Offline")

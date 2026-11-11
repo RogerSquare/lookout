@@ -27,7 +27,8 @@ enum Demo {
                       since: nil, lastSeen: nil, alerts: true, frame: "", hls: nil, mjpeg: nil, ptz: i == 1,
                       hlsVariants: ["phone", "hd"],
                       caps: i == 1 ? ["sleep", "night_vision", "status_light", "ptz", "presets"]
-                                   : ["sleep", "night_vision", "status_light"])
+                                   : ["sleep", "night_vision", "status_light"],
+                      asleep: i == 2)
         }
     }
 

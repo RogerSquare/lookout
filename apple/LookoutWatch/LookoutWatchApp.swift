@@ -163,6 +163,7 @@ struct CameraPage: View {
     @State private var pan: CGFloat = 0          // -1 ... 1 while filled
     @State private var panAtDragStart: CGFloat = 0
     @State private var appeared = false
+    @ObservedObject private var sleep = SleepState.shared
 
     private let spring = Animation.spring(response: 0.38, dampingFraction: 0.82)
     private var person: Bool { camera.person }
@@ -216,7 +217,22 @@ struct CameraPage: View {
                             PageIndicator(index: position.index, count: position.count)
                         }
                     }
-                    PersonStatus(camera: camera).foregroundStyle(.secondary)
+                    HStack {
+                        PersonStatus(camera: camera).foregroundStyle(.secondary)
+                        Spacer(minLength: 4)
+                        if camera.can("sleep") {
+                            Button {
+                                Task { await sleep.set(camera, asleep: !camera.isAsleep, client: client) }
+                            } label: {
+                                Image(systemName: camera.isAsleep ? "sun.max.fill" : "moon.zzz.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(camera.isAsleep ? Color.yellow : Color.indigo)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(sleep.busy.contains(camera.id))
+                            .accessibilityLabel(camera.isAsleep ? "Wake Camera" : "Put Camera to Sleep")
+                        }
+                    }
                 }
                 .frame(width: cardWidth - 8, alignment: .leading)
                 .position(x: size.width / 2, y: size.height * 0.42 + cardHeight / 2 + 26)

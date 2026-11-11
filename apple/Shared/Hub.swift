@@ -20,9 +20,12 @@ struct HubCamera: Codable, Identifiable, Equatable {
     var caps: [String]? = nil
     /// The hub put it to sleep (or it was switched off): not offline, just resting
     var asleep: Bool? = nil
+    /// When the hub puts it to sleep and wakes it
+    var sleepSchedule: SleepSchedule? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, name, connected, person, since, alerts, frame, hls, mjpeg, ptz, caps, asleep
+        case sleepSchedule = "sleep_schedule"
         case lastSeen = "last_seen"
         case hlsVariants = "hls_variants"
     }
@@ -61,6 +64,16 @@ struct Visitor: Codable, Identifiable, Equatable {
     let thumbnail: String?
 
     var date: Date { Date(timeIntervalSince1970: start) }
+}
+
+/// The hub's sleep timetable for a camera: asleep from `sleep` to `wake` (local "HH:mm" in `tz`),
+/// starting on `days` (0 = Monday).
+struct SleepSchedule: Codable, Equatable {
+    var enabled: Bool
+    var sleep: String
+    var wake: String
+    var days: [Int]
+    var tz: String
 }
 
 struct PTZPreset: Codable, Equatable {
@@ -274,6 +287,21 @@ struct HubClient {
         var body: [String: Any] = ["action": action]
         if let value { body["value"] = value }
         _ = try await send("POST", "/api/watch/cameras/\(cam.id)/control", json: body, timeout: 10)
+    }
+
+    /// Put a camera to sleep (its video off) or wake it.
+    func setAsleep(_ cam: HubCamera, _ asleep: Bool) async throws {
+        try await control(cam, action: asleep ? "sleep" : "wake")
+    }
+
+    /// Save (or with nil, remove) a camera's sleep schedule.
+    func setSchedule(_ cam: HubCamera, _ schedule: SleepSchedule?) async throws {
+        var body: [String: Any] = [:]
+        if let schedule {
+            body = ["enabled": schedule.enabled, "sleep": schedule.sleep, "wake": schedule.wake,
+                    "days": schedule.days, "tz": schedule.tz]
+        }
+        _ = try await send("PUT", "/api/watch/cameras/\(cam.id)/schedule", json: body, timeout: 10)
     }
 
     /// Turn to saved position n (1-based, in the camera's own list).

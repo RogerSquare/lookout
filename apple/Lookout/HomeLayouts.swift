@@ -38,14 +38,43 @@ struct CameraTile: View {
     /// Extra room for the badges where the tile meets the screen's edge (rounded corners, cutout)
     var edgeInsets = EdgeInsets()
 
+    @ObservedObject private var sleep = SleepState.shared
+
     var body: some View {
         ZStack {
-            if live && camera.connected {
+            if live && camera.connected && !camera.isAsleep {
                 LiveCameraView(camera: camera, client: client, frameWidth: frameWidth, fill: fill, transport: transport)
+            } else if (camera.isAsleep || sleep.isWaking(camera)), let last = LiveModel.lastFrame(camera.id) {
+                // The last picture, dimmed, so it's clear which camera this is
+                Color.black.overlay {
+                    Image(uiImage: last).resizable().aspectRatio(contentMode: fill ? .fill : .fit)
+                        .opacity(0.35).saturation(0.3)
+                }
+                .clipped()
             } else {
                 Color.black
             }
-            if !camera.connected {
+            if camera.isAsleep && !sleep.isWaking(camera) {
+                VStack(spacing: compact ? 4 : 8) {
+                    Image(systemName: "moon.zzz.fill")
+                        .font(compact ? .body : .title2)
+                        .foregroundStyle(.indigo)
+                    Text("Asleep")
+                        .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
+                    if !compact && camera.can("sleep") {
+                        Button("Wake") { Task { await sleep.set(camera, asleep: false, client: client) } }
+                            .buttonStyle(.glass)
+                            .disabled(sleep.busy.contains(camera.id))
+                    }
+                }
+            } else if sleep.isWaking(camera) {
+                VStack(spacing: compact ? 4 : 8) {
+                    ProgressView()
+                    Text("Waking…")
+                        .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
+                }
+                .foregroundStyle(.secondary)
+            } else if !camera.connected {
                 VStack(spacing: compact ? 4 : 8) {
                     Image(systemName: "video.slash.fill")
                         .font(compact ? .body : .title2)
@@ -78,7 +107,14 @@ struct CameraTile: View {
         .accessibilityLabel(Self.label(camera))
         .accessibilityAddTraits(.isButton)
         .contextMenu {
-            if camera.can("ptz") {
+            if camera.can("sleep") {
+                Button {
+                    Task { await sleep.set(camera, asleep: !camera.isAsleep, client: client) }
+                } label: {
+                    Label(camera.isAsleep ? "Wake" : "Sleep", systemImage: camera.isAsleep ? "sun.max" : "moon.zzz")
+                }
+            }
+            if camera.can("ptz") && !camera.isAsleep {
                 Section("Turn") {
                     Button { turn(-1, 0) } label: { Label("Left", systemImage: "arrow.left") }
                     Button { turn(1, 0) } label: { Label("Right", systemImage: "arrow.right") }
@@ -94,6 +130,7 @@ struct CameraTile: View {
     }
 
     static func label(_ camera: HubCamera) -> String {
+        if camera.isAsleep { return "\(camera.name), asleep" }
         if !camera.connected { return "\(camera.name), offline" }
         if camera.person { return "\(camera.name), person now" }
         return camera.name
