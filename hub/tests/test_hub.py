@@ -287,6 +287,45 @@ async def push_checks(s, pushes, data_dir):
     saved = json.loads((data_dir / "devices.json").read_text())
     check("push: token Apple reports gone (410) is dropped", live in saved and dead not in saved, str(list(saved)))
 
+    # Live Activity: someone at a door camera
+    start_tok, act_tok = "e1" * 40, "f2" * 40
+    async with s.post(f"{BASE}/api/watch/activity-token", headers=auth,
+                      json={"kind": "start", "token": start_tok, "topic": "com.evil", "env": "production"}) as r:
+        check("live activity: foreign topic refused", r.status == 400)
+    async with s.post(f"{BASE}/api/watch/activity-token", headers=auth,
+                      json={"kind": "start", "token": start_tok, "topic": "dev.rogersquare.lookout", "env": "production"}) as r:
+        check("live activity: push-to-start token registered", r.status == 200)
+    pushes.clear()
+    async with s.post(f"{BASE}/api/test", json={"camera": "street", "seconds": 1}) as r:
+        pass
+    await asyncio.sleep(1.5)
+    check("live activity: not for a camera that isn't a door", not any(p["token"] == start_tok for p in pushes))
+    pushes.clear()
+    async with s.post(f"{BASE}/api/test", json={"camera": "photo", "seconds": 2}) as r:
+        pass
+    for _ in range(30):
+        if any(p["token"] == start_tok for p in pushes):
+            break
+        await asyncio.sleep(0.1)
+    la = next((p for p in pushes if p["token"] == start_tok), {})
+    h = {k.lower(): v for k, v in la.get("headers", {}).items()}
+    aps = la.get("body", {}).get("aps", {})
+    check("live activity: started at a door camera (push-to-start, liveactivity topic)",
+          h.get("apns-push-type") == "liveactivity" and h.get("apns-topic") == "dev.rogersquare.lookout.push-type.liveactivity"
+          and aps.get("event") == "start" and aps.get("attributes-type") == "PersonActivityAttributes"
+          and aps.get("attributes") == {"cameraID": "photo", "name": "Photo"} and aps["content-state"]["person"] is True,
+          json.dumps(la.get("body"))[:200])
+    async with s.post(f"{BASE}/api/watch/activity-token", headers=auth,
+                      json={"kind": "update", "camera": "photo", "token": act_tok, "topic": "dev.rogersquare.lookout"}) as r:
+        check("live activity: the running activity's token registered", r.status == 200)
+    for _ in range(60):
+        if any(p["token"] == act_tok for p in pushes):
+            break
+        await asyncio.sleep(0.1)
+    end = next((p for p in pushes if p["token"] == act_tok), {}).get("body", {}).get("aps", {})
+    check("live activity: ended when they leave", end.get("event") == "end" and end["content-state"]["person"] is False
+          and end.get("dismissal-date"), json.dumps(end)[:200])
+
 
 async def watch_checks(s, go2rtc_requests):
     """The watch/iPhone routes: token, camera list, scaled frames, and the HLS proxy."""
@@ -415,7 +454,7 @@ async def main():
         "cameras": [
             {"id": "street", "name": "Street", "detect_url": str(MEDIA / "arrive_leave.mp4"), "loop": True,
              "streams": {"sd": "rtsp://example:8555/street"}, "hls_variants": {"phone": "street_phone"}},
-            {"id": "photo", "name": "Photo", "detect_url": str(MEDIA / "people.jpg"), "loop": True},
+            {"id": "photo", "name": "Photo", "detect_url": str(MEDIA / "people.jpg"), "loop": True, "role": "door"},
         ],
         "model": os.environ.get("LOOKOUT_MODEL", "rfdetr-nano"),
         "hide_after_seconds": HIDE_AFTER,
