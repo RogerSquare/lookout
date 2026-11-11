@@ -32,6 +32,7 @@ class FakeFrigate:
         self.sockets = set()
         self.logins = 0
         self.clip_fetches = []
+        self.extra = {}        # cameras added to Frigate during the test
 
     def authed(self, request):
         return request.cookies.get("frigate_token") == "ok"
@@ -61,7 +62,8 @@ class FakeFrigate:
         return web.json_response({"go2rtc": {"streams": {"front_door": ["rtsp://cam/x"]}}, "cameras": {
             "kitchen": {"ffmpeg": {"inputs": [{"path": "rtsp://elsewhere/k", "roles": ["record"]}]}},
             "front_door": {"ui": {"name": "Front Door"}, "ffmpeg": {"inputs": [{"path": "rtsp://cam/x", "roles": ["detect"]}]}},
-            "garage": {"enabled": False, "ffmpeg": {"inputs": [{"path": "rtsp://cam/g", "roles": ["detect"]}]}}}})
+            "garage": {"enabled": False, "ffmpeg": {"inputs": [{"path": "rtsp://cam/g", "roles": ["detect"]}]}},
+            **self.extra}})
 
     @guard
     async def stats(self, request):
@@ -343,6 +345,40 @@ async def main():
                 check("events from Frigate while the hub detects", [e["id"] for e in (await r.json())["events"]] == ["r2"])
             check("history doesn't follow Frigate's live reviews", not fake.sockets)
             check("history setting saved", json.loads((data / "settings.json").read_text())["history"]["password"] == "pw")
+
+            # Cameras Frigate has and the hub doesn't
+            async with s.get(f"{BASE}/api/admin/found?scan=1", headers=A) as r:
+                check("found cameras: none while the hub has all of Frigate's", (await r.json())["cameras"] == [])
+            fake.extra["porch"] = {"ffmpeg": {"inputs": [{"path": "rtsp://cam/p", "roles": ["detect"]}]}}
+            async with s.get(f"{BASE}/api/admin/found?scan=1", headers=A) as r:
+                found = (await r.json())["cameras"]
+                check("a camera new in Frigate is found", [f["id"] for f in found] == ["porch"], json.dumps(found))
+            async with s.post(f"{BASE}/api/admin/found/porch/add", headers=A) as r:
+                check("found camera added", r.status == 200)
+            async with s.get(f"{BASE}/api/admin/config", headers=A) as r:
+                porch = next((c for c in (await r.json())["cameras"] if c["id"] == "porch"), None)
+                check("added with its Frigate name, alerts on", porch is not None and porch.get("frigate") == "porch")
+            async with s.delete(f"{BASE}/api/admin/cameras/porch", headers=A) as r:
+                check("camera removed", r.status == 200)
+            async with s.get(f"{BASE}/api/admin/found?scan=1", headers=A) as r:
+                check("a removed camera isn't offered again", (await r.json())["cameras"] == [])
+            fake.extra["shed"] = {"ffmpeg": {"inputs": [{"path": "rtsp://cam/s", "roles": ["detect"]}]}}
+            async with s.put(f"{BASE}/api/admin/settings", headers=A, json={"auto_add_cameras": True}) as r:
+                check("auto-add turned on", r.status == 200, await r.text())
+            async with s.get(f"{BASE}/api/admin/found?scan=1", headers=A) as r:
+                f = await r.json()
+                check("auto-add: nothing left to offer", f["cameras"] == [] and f["auto"] is True)
+            async with s.get(f"{BASE}/api/state") as r:
+                st = await r.json()
+                check("auto-added camera starts with alerts off",
+                      any(c["id"] == "shed" for c in st["cameras"]) and st["alerts"]["cameras"].get("shed") is False,
+                      json.dumps(st["alerts"]))
+            fake.extra["gate"] = {"ffmpeg": {"inputs": [{"path": "rtsp://127.0.0.1:8554/front_door", "roles": ["detect"]}]}}
+            async with s.put(f"{BASE}/api/admin/settings", headers=A, json={"auto_add_cameras": False}) as r:
+                pass
+            async with s.get(f"{BASE}/api/admin/found?scan=1", headers=A) as r:
+                check("a camera with the same stream as one the hub has isn't offered",
+                      "gate" not in [c["id"] for c in (await r.json())["cameras"]])
             async with s.put(f"{BASE}/api/admin/history", headers=A, json={}) as r:
                 check("history turned off", r.status == 200)
             async with s.get(f"{BASE}/api/watch/events?token={app_token}") as r:

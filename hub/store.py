@@ -19,11 +19,11 @@ EDITABLE = {
     "detect_fps", "confidence", "trigger_hits", "trigger_window", "hide_after_seconds", "threads",
     "model", "gpu_helper", "gpu_helper_timeout_ms", "go2rtc", "public_host",
     "detect_power", "model_families", "hub_name", "remote_url", "allow_legacy_token",
-    "alerts_to",
+    "alerts_to", "auto_add_cameras",
 }
 CAMERA_FIELDS = {
     "id", "name", "role", "url", "sub_url", "detect_url", "streams", "hls_src", "hls_variants",
-    "min_person_height", "zone", "loop", "enabled", "ptz",
+    "min_person_height", "zone", "loop", "enabled", "ptz", "frigate",
 }
 ROLES = ("door", "other")
 _ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
@@ -71,6 +71,8 @@ def validate_camera(cam):
             for p in zone)
         if not ok:
             raise ConfigError("zone must be 3+ [x, y] points, each a 0-1 fraction of the frame")
+    if "frigate" in cam and not (isinstance(cam["frigate"], str) and _ID.fullmatch(cam["frigate"])):
+        raise ConfigError("frigate must be the camera's name in Frigate")
     if cam.get("ptz") is not None:
         import ptz
         try:
@@ -168,6 +170,15 @@ class Store:
             self.data["source"] = cfg
             self._save()
 
+    def dismissed(self):
+        """Found cameras (Frigate names) the user removed or dismissed: never offered again."""
+        return set(self.data.get("dismissed_cameras") or [])
+
+    def set_dismissed(self, names):
+        with self.lock:
+            self.data["dismissed_cameras"] = sorted(names)
+            self._save()
+
     def history(self):
         """Frigate used for event history and clips while the hub detects itself (None = off)."""
         return self.data.get("history")
@@ -241,6 +252,8 @@ class Store:
             raise ConfigError("detect_power must be power, balanced or accuracy")
         if "hub_name" in patch and not (isinstance(patch["hub_name"], str) and 0 < len(patch["hub_name"].strip()) <= 40):
             raise ConfigError("hub_name must be 1-40 characters")
+        if "auto_add_cameras" in patch and not isinstance(patch["auto_add_cameras"], bool):
+            raise ConfigError("auto_add_cameras must be true or false")
         if "alerts_to" in patch and patch["alerts_to"] not in ("phone", "watch", "all"):
             raise ConfigError("alerts_to must be phone, watch or all")
         remote = patch.get("remote_url")

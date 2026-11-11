@@ -293,3 +293,7 @@ label.inline.fps input { display: block; margin-top: .5rem; }
 .switch-row > .grow, .devices li > .grow { min-width: 0; }
 .thumb { width: 72px; height: 41px; border-radius: 8px; object-fit: cover; background: #1C1C1E; flex: none; }
 .thumb:not([src]) { visibility: visible; }
+
+.found-list { display: flex; flex-direction: column; gap: .5rem; margin: .6rem 0 1rem; }
+.found-list .row { display: flex; align-items: center; gap: .6rem; }
+.found-list .row .grow { flex: 1; min-width: 0; }
