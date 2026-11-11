@@ -16,16 +16,20 @@ struct HubCamera: Codable, Identifiable, Equatable {
     let ptz: Bool?
     /// stream.m3u8?v=<name> choices, e.g. "phone", "hd" (older hubs don't say)
     var hlsVariants: [String]? = nil
-    /// Extra controls the camera has, e.g. "sleep", "night_vision" (none from hubs yet)
+    /// What the camera can be told to do: "ptz", "presets", "sleep", "night_vision", "status_light"
     var caps: [String]? = nil
+    /// The hub put it to sleep (or it was switched off): not offline, just resting
+    var asleep: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, name, connected, person, since, alerts, frame, hls, mjpeg, ptz, caps
+        case id, name, connected, person, since, alerts, frame, hls, mjpeg, ptz, caps, asleep
         case lastSeen = "last_seen"
         case hlsVariants = "hls_variants"
     }
 
     func offers(_ variant: String) -> Bool { hlsVariants?.contains(variant) ?? false }
+    func can(_ cap: String) -> Bool { caps?.contains(cap) ?? (cap == "ptz" && ptz == true) }
+    var isAsleep: Bool { asleep ?? false }
 
     var lastSeenDate: Date? { lastSeen.flatMap(Self.parse) }
 
@@ -57,6 +61,11 @@ struct Visitor: Codable, Identifiable, Equatable {
     let thumbnail: String?
 
     var date: Date { Date(timeIntervalSince1970: start) }
+}
+
+struct PTZPreset: Codable, Equatable {
+    let pan: Double?
+    let tilt: Double?
 }
 
 /// A person event at a camera (from Frigate), with its snapshot and, once it's over, its clip.
@@ -265,6 +274,17 @@ struct HubClient {
         var body: [String: Any] = ["action": action]
         if let value { body["value"] = value }
         _ = try await send("POST", "/api/watch/cameras/\(cam.id)/control", json: body, timeout: 10)
+    }
+
+    /// Turn to saved position n (1-based, in the camera's own list).
+    func ptz(_ cam: HubCamera, preset: Int) async throws {
+        _ = try await send("POST", "/api/watch/cameras/\(cam.id)/ptz", json: ["preset": preset], timeout: 10)
+    }
+
+    /// The camera's saved positions (degrees), in order.
+    func ptzPresets(_ cam: HubCamera) async throws -> [PTZPreset] {
+        struct Reply: Decodable { let presets: [PTZPreset] }
+        return try JSONDecoder().decode(Reply.self, from: try await get("/api/watch/cameras/\(cam.id)/ptz")).presets
     }
 
     func hlsURL(_ cam: HubCamera, variant: String? = nil) async -> URL? {

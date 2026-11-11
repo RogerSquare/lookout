@@ -25,7 +25,9 @@ enum Demo {
         (0..<n).map { i in
             HubCamera(id: "demo\(i)", name: names[i], connected: i != 3, person: i == 0,
                       since: nil, lastSeen: nil, alerts: true, frame: "", hls: nil, mjpeg: nil, ptz: i == 1,
-                      hlsVariants: ["phone", "hd"])
+                      hlsVariants: ["phone", "hd"],
+                      caps: i == 1 ? ["sleep", "night_vision", "status_light", "ptz", "presets"]
+                                   : ["sleep", "night_vision", "status_light"])
         }
     }
 
