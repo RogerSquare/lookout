@@ -23,6 +23,12 @@ final class LiveModel: ObservableObject {
     private var observer: NSKeyValueObservation?
 
     func run(_ cam: HubCamera, client: HubClient, width: Int, transport: LiveTransport) async {
+        #if DEBUG && os(iOS)
+        if Demo.isDemo(cam) {
+            still = Demo.image(cam)
+            return
+        }
+        #endif
         switch transport {
         case .mjpeg(let fps): await runMJPEG(cam, client: client, width: width, fps: fps)
         case .hls(let variant): await runHLS(cam, client: client, width: width, variant: variant)

@@ -9,6 +9,9 @@ final class PhoneAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
                      didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
+        #if DEBUG
+        if Demo.enabled { return true }      // demo screenshots: no permission prompt over the cameras
+        #endif
         center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
             if granted {
                 DispatchQueue.main.async { application.registerForRemoteNotifications() }
