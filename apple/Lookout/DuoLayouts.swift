@@ -10,6 +10,8 @@ import SwiftUI
 struct CameraEvent: Identifiable, Equatable {
     let visitor: Visitor
     let camera: HubCamera
+    /// From the hub's events list: has the clip (nil from older hubs' visitors list)
+    var event: HubEvent? = nil
 
     var id: String { "\(camera.id)/\(visitor.id)" }
     var date: Date { visitor.date }
@@ -38,6 +40,14 @@ final class TodayEvents: ObservableObject {
 
     private func load(_ cameras: [HubCamera], client: HubClient) async {
         var found: [CameraEvent] = []
+        let byID = Dictionary(uniqueKeysWithValues: cameras.map { ($0.id, $0) })
+        // One call on hubs with the events list; older ones are asked camera by camera
+        if let page = try? await client.events(limit: 60) {
+            found = page.events.filter { Calendar.current.isDateInToday($0.date) }
+                .compactMap { e in byID[e.camera].map { CameraEvent(visitor: e.visitor, camera: $0, event: e) } }
+            if found != events { events = found }
+            return
+        }
         for cam in cameras {
             var visitors: [Visitor] = []
             #if DEBUG
@@ -129,8 +139,7 @@ struct EventList: View {
             }
         }
         .sheet(item: $open) { event in
-            VisitorDetail(visitor: event.visitor, camera: event.camera, client: client)
-                .presentationDetents([.medium, .large])
+            EventDetail(event: event, client: client)
         }
     }
 }
@@ -341,8 +350,7 @@ struct DuoLaptop: View {
             }
         }
         .sheet(item: $openEvent) { event in
-            VisitorDetail(visitor: event.visitor, camera: event.camera, client: client)
-                .presentationDetents([.medium, .large])
+            EventDetail(event: event, client: client)
         }
     }
 

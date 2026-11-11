@@ -565,6 +565,7 @@ class Hub:
         self.store = store
         self.auth = Auth(store) if store else None
         self.pairing = Pairing(store, DATA_DIR) if store else None
+        self._clip_locks = {}     # clip file name -> lock, so one fetch per clip
         self.zeroconf = None
         self.state_file = DATA_DIR / "state.json"
         self.alerts = self._load_alerts()
@@ -574,6 +575,9 @@ class Hub:
         self._local_fps = settings["detect_fps"]   # what the local detector can afford
         self.source = (store.source() if store else None) or {"type": "builtin"}
         self.frigate = None         # Frigate client while it is the source (set at startup)
+        # Frigate for event history and clips only, while the hub detects people itself
+        self.history_cfg = (store.history() if store else None)
+        self._history = None
         self.choice = None          # what the profile picked: {model, backend, ms, fps}
         self._profile = None
         self.local = (_ExternalDetector() if self.source["type"] == "frigate"
@@ -733,6 +737,28 @@ class Hub:
         log.info("frigate %s at %s is the detection source%s", fr.version, fr.url,
                  f" (imported {', '.join(added)})" if added else "")
         return added
+
+    @property
+    def history(self):
+        """The Frigate that answers for past events and clips: the source, else the history one."""
+        return self.frigate or self._history
+
+    async def start_history(self, cfg):
+        fr = Frigate(cfg, on_review=lambda *a: None)
+        try:
+            await fr.open()
+        except BaseException:
+            await fr.close()
+            raise
+        old, self._history = self._history, fr
+        if old:
+            await old.close()
+        log.info("frigate %s at %s gives event history and clips", fr.version, fr.url)
+
+    async def stop_history(self):
+        if self._history is not None:
+            fr, self._history = self._history, None
+            await fr.close()
 
     def on_frigate_review(self, kind, review):
         cam = self.cameras.get(review["camera"])
@@ -1219,6 +1245,36 @@ class Hub:
         self.publish({**self.state()})
         return web.json_response({"type": kind, "imported": added})
 
+    async def admin_get_history(self, request):
+        cfg = dict(self.history_cfg or {})
+        if cfg.get("password"):
+            cfg["password"] = "***"
+        return web.json_response({**cfg, "enabled": bool(self.history_cfg),
+                                  "connected": self._history is not None,
+                                  "version": self._history.version if self._history else None})
+
+    async def admin_put_history(self, request):
+        """{"url": ..., "user"?, "password"?} to get event history and clips from Frigate while
+        this hub detects people itself; {} to stop. Tested before it's saved."""
+        body = await self._json_body(request)
+        if not body.get("url"):
+            await self.stop_history()
+            self.history_cfg = None
+            self.store.set_history(None)
+            return web.json_response({"enabled": False})
+        if not isinstance(body["url"], str) or not body["url"].startswith(("http://", "https://")):
+            raise web.HTTPBadRequest(text="url must be Frigate's http(s) address")
+        if body.get("password") == "***":
+            body["password"] = (self.history_cfg or {}).get("password")
+        cfg = {k: body[k] for k in ("url", "user", "password") if body.get(k)}
+        try:
+            await self.start_history(cfg)
+        except (FrigateError, aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
+            raise web.HTTPBadRequest(text=f"can't use Frigate there: {e}")
+        self.history_cfg = cfg
+        self.store.set_history(cfg)
+        return web.json_response({"enabled": True, "version": self._history.version})
+
     async def _ptz(self, request, cam_id):
         cam = self.cameras.get(cam_id)
         if cam is None:
@@ -1250,10 +1306,10 @@ class Hub:
     async def watch_visitors(self, request):
         """Recent person alerts for a camera (from Frigate), newest first, with thumbnails."""
         cam = self._camera(request)
-        if self.frigate is None:
+        if self.history is None:
             return web.json_response({"visitors": []})
         try:
-            items = await self.frigate.recent(self.frigate_name(cam), int(request.query.get("limit", 10)))
+            items = await self.history.recent(self.frigate_name(cam), int(request.query.get("limit", 10)))
         except (FrigateError, aiohttp.ClientError, asyncio.TimeoutError) as e:
             raise web.HTTPBadGateway(text=f"frigate: {e}")
         return web.json_response({"visitors": [
@@ -1261,15 +1317,92 @@ class Hub:
              "thumbnail": f"/api/watch/visitors/{v['detection']}.jpg" if v["detection"] else None}
             for v in items]})
 
+    async def watch_events(self, request):
+        """Person events across the cameras (or one, ?camera=), newest first, from Frigate:
+        ?before=<unix seconds> pages back. Each has a thumbnail and, once it's over, a clip."""
+        if self.history is None:
+            return web.json_response({"events": [], "more": False})
+        wanted = request.query.get("camera")
+        cams = [c for c in self.cameras.values() if not wanted or c.id == wanted]
+        if wanted and not cams:
+            raise web.HTTPNotFound(text="no such camera")
+        by_name = {self.frigate_name(c): c for c in cams}
+        try:
+            limit = max(1, min(int(request.query.get("limit", 30)), 100))
+            before = float(request.query["before"]) if request.query.get("before") else None
+        except ValueError:
+            raise web.HTTPBadRequest(text="limit and before are numbers")
+        if not by_name:
+            return web.json_response({"events": [], "more": False})
+        try:
+            items = await self.history.reviews(list(by_name), before, limit)
+        except (FrigateError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+            raise web.HTTPBadGateway(text=f"frigate: {e}")
+        events = []
+        for v in items:
+            cam = by_name.get(v["camera"])
+            if cam is None or v["start"] is None:
+                continue
+            end = v["end"]
+            events.append({
+                "id": v["id"], "camera": cam.id, "start": v["start"], "end": end,
+                "thumbnail": f"/api/watch/visitors/{v['detection']}.jpg" if v["detection"] else None,
+                "clip": (f"/api/watch/cameras/{cam.id}/clip.mp4?start={v['start']:.3f}&end={end:.3f}"
+                         if end else None),
+            })
+        return web.json_response({"events": events, "more": len(items) >= limit})
+
+    CLIP_PAD = 2             # seconds of recording kept before and after an event
+    CLIP_MAX = 15 * 60       # longest clip served (seconds)
+    CLIP_CACHE = 500 * 1024 * 1024
+
+    async def watch_clip(self, request):
+        """An event's recording as MP4. Frigate's clips can't be fetched in ranges (players need
+        that), so each is fetched once, kept in the hub's data folder and served from there."""
+        cam = self._camera(request)
+        if self.history is None:
+            raise web.HTTPNotFound(text="no Frigate")
+        try:
+            start, end = float(request.query["start"]), float(request.query["end"])
+        except (KeyError, ValueError):
+            raise web.HTTPBadRequest(text="start and end are unix seconds")
+        if not 0 < end - start <= self.CLIP_MAX or end > time.time():
+            raise web.HTTPBadRequest(text="not a finished event")
+        folder = DATA_DIR / "clips"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{cam.id}-{int(start * 1000)}-{int(end * 1000)}.mp4"
+        if not path.exists():
+            lock = self._clip_locks.setdefault(path.name, asyncio.Lock())
+            async with lock:
+                if not path.exists():
+                    try:
+                        await self.history.save_clip(self.frigate_name(cam), start - self.CLIP_PAD,
+                                                     min(end + self.CLIP_PAD, time.time()), path)
+                    except (FrigateError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+                        raise web.HTTPNotFound(text=f"no recording: {e}")
+                    finally:
+                        self._clip_locks.pop(path.name, None)
+                    self._prune_clips(folder)
+        os.utime(path)       # recently watched clips are kept longest
+        return web.FileResponse(path, headers={"Content-Type": "video/mp4", "Cache-Control": "private, max-age=3600"})
+
+    def _prune_clips(self, folder):
+        files = sorted(folder.glob("*.mp4"), key=lambda f: f.stat().st_mtime, reverse=True)
+        total = 0
+        for f in files:
+            total += f.stat().st_size
+            if total > self.CLIP_CACHE:
+                f.unlink(missing_ok=True)
+
     async def watch_visitor_image(self, request):
-        if self.frigate is None:
+        if self.history is None:
             raise web.HTTPNotFound()
         det = request.match_info["det"]
         if not all(c.isalnum() or c in ".-_" for c in det):
             raise web.HTTPNotFound()
         h = max(64, min(int(request.query.get("h", 240)) if request.query.get("h", "").isdigit() else 240, 1080))
         try:
-            body = await self.frigate.get_bytes(f"/api/events/{det}/snapshot.jpg?bbox=0&height={h}")
+            body = await self.history.get_bytes(f"/api/events/{det}/snapshot.jpg?bbox=0&height={h}")
         except (FrigateError, aiohttp.ClientError) as e:
             raise web.HTTPNotFound(text=str(e))
         return web.Response(body=body, content_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
@@ -1516,6 +1649,15 @@ class Hub:
         asyncio.ensure_future(self._offline_loop())
         self.watch_load()
         await self.advertise()
+        if self.history_cfg:
+            async def connect_history():
+                while self._history is None and self.history_cfg:
+                    try:
+                        await self.start_history(self.history_cfg)
+                    except Exception as e:
+                        log.warning("frigate history: can't connect yet (%s), retrying", e)
+                        await asyncio.sleep(30)
+            asyncio.ensure_future(connect_history())
         if self.source["type"] == "frigate":
             async def connect():
                 while self.frigate is None and self.source["type"] == "frigate":
@@ -1649,8 +1791,12 @@ class Hub:
         app.router.add_post("/api/watch/cameras/{cam}/ptz", self.watch_ptz)
         app.router.add_post("/api/admin/cameras/{id}/ptz", self.admin_ptz)
         app.router.add_put("/api/admin/source", self.admin_put_source)
+        app.router.add_get("/api/admin/history", self.admin_get_history)
+        app.router.add_put("/api/admin/history", self.admin_put_history)
         app.router.add_get("/api/watch/cameras/{cam}/visitors", self.watch_visitors)
         app.router.add_get("/api/watch/visitors/{det}.jpg", self.watch_visitor_image)
+        app.router.add_get("/api/watch/events", self.watch_events)
+        app.router.add_get("/api/watch/cameras/{cam}/clip.mp4", self.watch_clip)
         app.router.add_post("/api/admin/detector/benchmark", self.admin_benchmark)
         app.on_startup.append(self.on_startup)
         app.on_shutdown.append(self.on_shutdown)
