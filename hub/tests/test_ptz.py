@@ -234,9 +234,13 @@ async def main():
                 await asyncio.sleep(0.25)
             check("the hub put the camera to sleep on schedule",
                   any(x[:3] == ("fixedcam", "power", "off") for x in seen[n:]), str(seen[n:]))
-            async with s.get(f"{BASE}/api/watch/cameras", headers=app) as r:
-                fx = next(c for c in (await r.json())["cameras"] if c["id"] == "fixed")
-                check("apps see it asleep, with its schedule", fx["asleep"] is True and fx["sleep_schedule"]["wake"] == later)
+            for _ in range(30):      # the hub marks it asleep once the bridge has answered
+                async with s.get(f"{BASE}/api/watch/cameras", headers=app) as r:
+                    fx = next(c for c in (await r.json())["cameras"] if c["id"] == "fixed")
+                if fx["asleep"]:
+                    break
+                await asyncio.sleep(0.1)
+            check("apps see it asleep, with its schedule", fx["asleep"] is True and fx["sleep_schedule"]["wake"] == later)
             await asyncio.sleep(2)
             check("sent once, not every tick", sum(1 for x in seen[n:] if x[:3] == ("fixedcam", "power", "off")) == 1)
             async with s.put(f"{BASE}/api/watch/cameras/fixed/schedule", json={}, headers=app) as r:
