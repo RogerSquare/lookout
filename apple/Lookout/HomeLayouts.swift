@@ -42,7 +42,24 @@ struct CameraTile: View {
 
     var body: some View {
         ZStack {
-            if live && camera.connected && !camera.isAsleep {
+            if camera.isOnDemand {
+                // Not streamed in a tile: that would keep a solar camera awake. Tap to open it.
+                ZStack {
+                    if let last = LiveModel.lastFrame(camera.id) {
+                        Image(uiImage: last).resizable().aspectRatio(contentMode: fill ? .fill : .fit).opacity(0.6)
+                    } else {
+                        Color.black
+                    }
+                    VStack(spacing: compact ? 4 : 8) {
+                        Image(systemName: "play.circle.fill").font(compact ? .title3 : .largeTitle)
+                        if !compact {
+                            Text("Tap to view").font(.subheadline.weight(.semibold))
+                        }
+                    }
+                    .foregroundStyle(.white)
+                }
+                .clipped()
+            } else if live && camera.connected && !camera.isAsleep {
                 LiveCameraView(camera: camera, client: client, frameWidth: frameWidth, fill: fill, transport: transport)
             } else if (camera.isAsleep || sleep.isWaking(camera)), let last = LiveModel.lastFrame(camera.id) {
                 // The last picture, dimmed, so it's clear which camera this is

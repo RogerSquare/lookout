@@ -63,6 +63,11 @@ sleeper = cam("porch")
 stub.cameras = {"porch": sleeper}
 stub.asleep = {"porch"}
 check("a camera put to sleep is never reported offline", check_offline(T0 + 5000) == [] and not sleeper.offline)
+solar = cam("solar")
+solar.on_demand = True
+stub.cameras = {"solar": solar}
+stub.asleep = set()
+check("an on-demand camera is never reported offline", check_offline(T0 + 5000) == [] and not solar.offline)
 
 # ---- sleep schedules: which sleeps/wakes are due ----
 from datetime import datetime as _dt  # noqa: E402

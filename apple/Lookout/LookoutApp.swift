@@ -207,7 +207,8 @@ struct PhoneHome: View {
             // The inner screen's live camera: one stream, kept while the Duo folds and unfolds
             .task(id: duoStreamKey(posture)) {
                 guard posture.usesDuoStream(layout), live,
-                      let cam = cameras.first(where: { $0.id == focusedID }) ?? cameras.first else { return }
+                      let cam = cameras.first(where: { $0.id == focusedID }) ?? cameras.first(where: { !$0.isOnDemand })
+                else { return }
                 if duoShownID != cam.id {
                     duoModel.reset()             // another camera: drop the last one's picture
                     duoShownID = cam.id

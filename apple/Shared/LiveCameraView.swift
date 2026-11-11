@@ -149,9 +149,11 @@ final class LiveModel: ObservableObject {
             if !moving, let data = try? await client.frame(cam, width: width), let img = UIImage(data: data) {
                 still = img
             }
-            // Dead stream (the go2rtc session expired, or the item failed): start over quickly
+            // Dead stream (the go2rtc session expired, or the item failed): start over quickly.
+            // An on-demand camera is woken first (several seconds), so it gets longer to start.
             let failed = player?.currentItem?.status == .failed
-            if player != nil, failed || Date().timeIntervalSince(lastProgress) > 5 {
+            let patience: TimeInterval = cam.isOnDemand && lastPosition < 0 ? 30 : 5
+            if player != nil, failed || Date().timeIntervalSince(lastProgress) > patience {
                 await startVideo(cam, client, variant)
                 lastPosition = -1
                 lastProgress = Date()

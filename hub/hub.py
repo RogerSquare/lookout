@@ -229,8 +229,14 @@ class Camera:
         self.offline = False        # reported as unresponsive (no picture for offline_alert_after)
         self.offline_notified = 0.0 # when the last offline notice went out
         self.offline_reported = False   # this outage's notice was sent (so "back" is too)
+        # Only streamed while someone watches (a battery or solar camera): the hub doesn't read it
+        # for detection, so it isn't kept awake, and it's never reported offline
+        self.on_demand = bool(cfg.get("on_demand"))
 
     def start(self):
+        if self.on_demand:
+            self.connected = True
+            return
         threading.Thread(target=self._read_loop, name=f"read-{self.id}", daemon=True).start()
         threading.Thread(target=self._detect_loop, name=f"detect-{self.id}", daemon=True).start()
 
@@ -273,6 +279,7 @@ class Camera:
             # what the apps may ask it to do, and whether the hub put it to sleep
             "caps": self.hub.caps(self),
             "asleep": self.id in self.hub.asleep,
+            "on_demand": self.on_demand,
             "sleep_schedule": (self.hub.store.schedules().get(self.id) if self.hub.store else None),
         }
 
@@ -2011,6 +2018,9 @@ class Hub:
     async def watch_frame(self, request):
         cam = self._camera(request)
         frame = cam.latest
+        if frame is None and cam.on_demand:
+            # Nothing is read from it until someone watches; don't wake it for a still
+            raise web.HTTPServiceUnavailable(text="on-demand camera: open it to see it")
         if frame is None:
             raise web.HTTPServiceUnavailable(text="no frame yet")
         try:
@@ -2158,7 +2168,7 @@ class Hub:
         now = now or time.time()
         out = []
         for cam in list(self.cameras.values()):
-            if cam.loop or cam.id in self.asleep:
+            if cam.loop or cam.id in self.asleep or getattr(cam, "on_demand", False):
                 continue
             last = max(cam.latest_time, cam.started_at)
             if not cam.offline and now - last >= after:
