@@ -101,6 +101,13 @@ struct PhoneHome: View {
     #endif
     @AppStorage("homeLayout") private var layout = HomeLayout.list
     @State private var focusedID: String?
+    /// iPhone Duo: the hinge (nil on other iPhones), and the inner screen's shared live camera and
+    /// Today list (one stream that carries on as the Duo folds between postures)
+    @State private var hinge: HingeStatus?
+    @State private var showWall = false
+    @State private var duoShownID: String?
+    @StateObject private var duoModel = LiveModel()
+    @StateObject private var today = TodayEvents()
 
     /// The cameras the home screen shows, in the user's order
     private var cameras: [HubCamera] { prefs.onPhone(store.cameras) }
@@ -114,26 +121,72 @@ struct PhoneHome: View {
 
     var body: some View {
         GeometryReader { geo in
-            let wall = geo.size.width > geo.size.height && !cameras.isEmpty
+            let posture = cameras.isEmpty ? .phone : HomePosture.resolve(size: geo.size, hinge: hinge, fold: geo.fold())
+            let wall = posture == .phone && geo.size.width > geo.size.height && !cameras.isEmpty
+            let fullBleed = wall || posture == .laptop || posture == .book
             NavigationStack {
                 Group {
-                    if wall {
-                        CameraWall(cameras: cameras, client: store.client, live: live) { playerID = $0.id }
-                    } else {
-                        ScrollView {
-                            VStack(spacing: 16) {
-                                emptyState
-                                cameraLayout
+                    switch posture {
+                    case .laptop:
+                        DuoLaptop(cameras: cameras, client: store.client, focusedID: $focusedID, model: duoModel,
+                                  today: today) { playerID = $0.id }
+                    case .book:
+                        DuoBook(cameras: cameras, client: store.client, live: live, focusedID: $focusedID,
+                                model: duoModel, today: today, open: { playerID = $0.id }, showWall: { showWall = true })
+                    case .open where layout == .focus:
+                        DuoOpenFocus(cameras: cameras, client: store.client, live: live, focusedID: $focusedID,
+                                     model: duoModel, today: today) { playerID = $0.id }
+                    default:
+                        if wall {
+                            CameraWall(cameras: cameras, client: store.client, live: live) { playerID = $0.id }
+                        } else {
+                            ScrollView {
+                                VStack(spacing: 16) {
+                                    emptyState
+                                    cameraLayout
+                                }
+                                .padding()
                             }
-                            .padding()
                         }
                     }
                 }
                 .navigationTitle("Lookout")
-                .toolbar(wall ? .hidden : .visible, for: .navigationBar)
+                .toolbar(fullBleed ? .hidden : .visible, for: .navigationBar)
                 .toolbar { toolbar }
             }
-            .statusBarHidden(wall)
+            .statusBarHidden(fullBleed)
+            // The inner screen's live camera: one stream, kept while the Duo folds and unfolds
+            .task(id: duoStreamKey(posture)) {
+                guard posture.usesDuoStream(layout), live,
+                      let cam = cameras.first(where: { $0.id == focusedID }) ?? cameras.first else { return }
+                if duoShownID != cam.id {
+                    duoModel.reset()             // another camera: drop the last one's picture
+                    duoShownID = cam.id
+                }
+                await duoModel.run(cam, client: store.client, width: 1280, transport: .hls(variant: "phone"))
+            }
+            .task(id: posture == .phone ? "" : cameras.map(\.id).joined(separator: ",")) {
+                guard posture != .phone else { return }
+                await today.run(cameras, client: store.client)
+            }
+        }
+        .observingHinge($hinge)
+        .debugScreen()
+        .fullScreenCover(isPresented: $showWall) {
+            CameraWall(cameras: cameras, client: store.client, live: phase == .active) { cam in
+                showWall = false
+                playerID = cam.id
+            }
+            .overlay(alignment: .topLeading) {
+                Button { showWall = false } label: {
+                    Image(systemName: "xmark").font(.body.weight(.semibold)).frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("Close")
+                .padding()
+            }
+            .background(.black)
         }
         #if DEBUG
         // -LookoutFakeLandscape: the sideways wall drawn turned on an upright screen (the
@@ -258,6 +311,12 @@ struct PhoneHome: View {
 }
 
 extension PhoneHome {
+    /// Restart the Duo's stream only when the camera changes or it pauses, not on every fold
+    fileprivate func duoStreamKey(_ posture: HomePosture) -> String {
+        guard posture.usesDuoStream(layout), live else { return "off" }
+        return (cameras.first(where: { $0.id == focusedID }) ?? cameras.first)?.id ?? "off"
+    }
+
     fileprivate func openRequested(_ id: String?) {
         guard let id, let cam = store.cameras.first(where: { $0.id == id }) else { return }
         showSettings = false

@@ -67,7 +67,7 @@ private struct VisitorCard: View {
     }
 }
 
-private struct VisitorDetail: View {
+struct VisitorDetail: View {
     let visitor: Visitor
     let camera: HubCamera
     let client: HubClient

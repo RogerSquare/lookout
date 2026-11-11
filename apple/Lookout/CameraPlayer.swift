@@ -359,25 +359,35 @@ struct CameraPlayer: View {
         withAnimation(.easeIn(duration: 0.3).delay(0.08)) { flash = false }
         scheduleHide()
         Task {
-            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-            guard status == .authorized || status == .limited else {
-                photosDenied = true
-                return
-            }
-            do {
-                try await PHPhotoLibrary.shared().performChanges {
-                    PHAssetChangeRequest.creationRequestForAsset(from: image)
-                }
-                saved.toggle()
-            } catch {
-                photosDenied = status != .authorized
+            switch await SnapshotSaver.save(image) {
+            case .saved: saved.toggle()
+            case .denied: photosDenied = true
+            case .failed: break
             }
         }
     }
 }
 
+/// Saves a picture to Photos with add-only access (asked for the first time).
+enum SnapshotSaver {
+    enum Outcome { case saved, denied, failed }
+
+    @MainActor static func save(_ image: UIImage) async -> Outcome {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else { return .denied }
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+            return .saved
+        } catch {
+            return .failed
+        }
+    }
+}
+
 /// A glass circle with a symbol, the player's button style.
-private struct RoundButton: View {
+struct RoundButton: View {
     let symbol: String
     let label: String
     let action: () -> Void
@@ -401,17 +411,18 @@ private struct RoundButton: View {
 /// (not SwiftUI's VideoPlayer) so it can go Picture in Picture.
 struct PlayerSurface: View {
     @ObservedObject var model: LiveModel
-    let pip: PiPController
+    var pip: PiPController?
+    var fill = false
 
     var body: some View {
         Color.black
             .overlay {
                 if let still = model.still {
-                    Image(uiImage: still).resizable().aspectRatio(contentMode: .fit)
+                    Image(uiImage: still).resizable().aspectRatio(contentMode: fill ? .fill : .fit)
                 }
             }
             .overlay {
-                PlayerLayerView(player: model.player, pip: pip)
+                PlayerLayerView(player: model.player, pip: pip, fill: fill)
                     .opacity(model.video ? 1 : 0)
                     .allowsHitTesting(false)
             }
@@ -448,7 +459,8 @@ private struct StillFrame: View {
 
 struct PlayerLayerView: UIViewRepresentable {
     let player: AVPlayer?
-    let pip: PiPController
+    var pip: PiPController?
+    var fill = false
 
     final class LayerView: UIView {
         override static var layerClass: AnyClass { AVPlayerLayer.self }
@@ -458,14 +470,15 @@ struct PlayerLayerView: UIViewRepresentable {
     func makeUIView(context: Context) -> LayerView {
         let view = LayerView()
         view.backgroundColor = .clear
-        view.playerLayer.videoGravity = .resizeAspect
+        view.playerLayer.videoGravity = fill ? .resizeAspectFill : .resizeAspect
         view.playerLayer.player = player
-        pip.attach(view.playerLayer)
+        pip?.attach(view.playerLayer)
         return view
     }
 
     func updateUIView(_ view: LayerView, context: Context) {
         if view.playerLayer.player !== player { view.playerLayer.player = player }
+        view.playerLayer.videoGravity = fill ? .resizeAspectFill : .resizeAspect
     }
 }
 
