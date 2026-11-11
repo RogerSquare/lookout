@@ -164,6 +164,17 @@
       <div class="panel"><dl class="facts" id="hub-facts"></dl>
         <div class="row"><button id="restart-btn">Restart hub</button><span class="muted" id="restart-note"></span></div>
       </div>
+      <div class="panel" id="bridge-panel">
+        <h3>Camera controls</h3>
+        <p class="muted" id="bridge-note"></p>
+        <form id="bridge-form" class="grid2">
+          <label>Camera bridge address <input id="br-url" placeholder="http://192.168.1.20:5080" spellcheck="false">
+            <small class="muted">docker-wyze-bridge 3.x. Lets the apps put cameras to sleep, switch night vision and turn cameras that can move.</small></label>
+          <label>Bridge API key <input id="br-key" type="password" autocomplete="off" placeholder="WB_API"></label>
+          <div class="span2 row"><button class="primary" type="submit">Save</button><button type="button" id="br-off">Turn Off</button><span id="br-status" class="muted"></span></div>
+        </form>
+        <div id="bridge-cams" class="found-list"></div>
+      </div>
       <form class="panel grid2" id="hub-form">
         <h3 class="span2">Name, away address and alerts</h3>
         <label>Hub name <input id="hub-name" maxlength="40" required></label>

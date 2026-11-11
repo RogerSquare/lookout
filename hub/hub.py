@@ -265,7 +265,10 @@ class Camera:
             # stream.m3u8?v=<name> choices besides the default (e.g. "phone", "hd")
             "hls_variants": sorted(self.hls_variants) if self.hls_src else [],
             "mjpeg": f"{base}/live.mjpeg",
-            "ptz": bool(self.cfg.get("ptz")),
+            "ptz": "ptz" in self.hub.caps(self),
+            # what the apps may ask it to do, and whether the hub put it to sleep
+            "caps": self.hub.caps(self),
+            "asleep": self.id in self.hub.asleep,
         }
 
     def _set_connected(self, connected):
@@ -579,6 +582,12 @@ class Hub:
         self.history_cfg = (store.history() if store else None)
         self._history = None
         self.found = []             # cameras Frigate has that the hub doesn't (see scan_found)
+        # The camera bridge that sends commands (sleep, night vision, pan/tilt)
+        self.bridge_cfg = (store.bridge() if store else None)
+        self.bridge_cams = {}       # its cameras: stream name -> {model, name, mac}
+        self.asleep = set()         # camera ids put to sleep (power off), never reported offline
+        self._control_locks = {}
+        self._control_last = {}
         self.choice = None          # what the profile picked: {model, backend, ms, fps}
         self._profile = None
         self.local = (_ExternalDetector() if self.source["type"] == "frigate"
@@ -767,6 +776,183 @@ class Hub:
         if self._history is not None:
             fr, self._history = self._history, None
             await fr.close()
+
+    # ---- camera controls ---------------------------------------------------------------
+
+    CONTROL_ACTIONS = ("sleep", "wake", "night_vision", "status_light")
+    CONTROL_GAP = 2.0            # seconds between commands to one camera
+
+    def bridge_name(self, cam):
+        """The camera's stream name in the bridge: set explicitly, or the last part of its url."""
+        return cam.cfg.get("bridge") or (cam.cfg.get("url") or "").rstrip("/").rsplit("/", 1)[-1]
+
+    def controls_cfg(self, cam):
+        """How to send this camera commands: its own `ptz` setting (older configs), else the hub's
+        camera bridge when the bridge has a stream of the same name. None = no controls."""
+        if cam.cfg.get("ptz"):
+            return cam.cfg["ptz"]
+        name = self.bridge_name(cam)
+        if self.bridge_cfg and name in self.bridge_cams:
+            cfg = {"type": "wyze-bridge", "url": self.bridge_cfg["url"].rstrip("/"), "camera": name}
+            if self.bridge_cfg.get("api_key"):
+                cfg["api_key"] = self.bridge_cfg["api_key"]
+            return cfg
+        return None
+
+    def caps(self, cam):
+        """What the apps may ask this camera to do."""
+        if cam.cfg.get("ptz"):
+            return ["ptz", "presets"]              # a camera set up for pan/tilt only
+        cfg = self.controls_cfg(cam)
+        if not cfg:
+            return []
+        caps = ["sleep", "night_vision", "status_light"]
+        if "PAN" in self.bridge_cams.get(cfg["camera"], {}).get("model", "").upper():
+            caps += ["ptz", "presets"]
+        return caps
+
+    def _bridge(self, cam):
+        cfg = self.controls_cfg(cam)
+        if not cfg:
+            return None
+        if getattr(self, "ptz", None) is None:
+            self.ptz = PTZ(self.http)
+        return self.ptz.backend(cfg)
+
+    async def refresh_bridge(self):
+        """The bridge's camera list, and which cameras are switched off. Every 2 minutes."""
+        if not self.bridge_cfg:
+            self.bridge_cams = {}
+            return
+        from ptz import bridge_cameras
+        self.bridge_cams = await bridge_cameras(self.bridge_cfg["url"], self.bridge_cfg.get("api_key"), self.http)
+        for cam in list(self.cameras.values()):
+            if "sleep" not in self.caps(cam):
+                self.asleep.discard(cam.id)
+                continue
+            try:
+                power = await self._bridge(cam).get("power")
+            except PTZError:
+                continue
+            self._set_asleep(cam, power == "off")
+
+    def _set_asleep(self, cam, asleep):
+        if asleep == (cam.id in self.asleep):
+            return
+        if asleep:
+            self.asleep.add(cam.id)
+        else:
+            self.asleep.discard(cam.id)
+            cam.started_at = time.time()           # waking takes about a minute: no "offline" meanwhile
+        log.info("%s: %s", cam.id, "asleep" if asleep else "awake")
+        self.publish({"type": "camera_sleep", "camera": cam.id, "asleep": asleep})
+        self.publish(self.state())
+
+    async def _bridge_loop(self):
+        while True:
+            try:
+                await self.refresh_bridge()
+            except Exception as e:
+                log.info("camera bridge: %s", e)
+            await asyncio.sleep(120)
+
+    async def admin_get_bridge(self, request):
+        if request.query.get("refresh"):
+            try:
+                await self.refresh_bridge()
+            except PTZError as e:
+                raise web.HTTPBadGateway(text=str(e))
+        cfg = dict(self.bridge_cfg or {})
+        if cfg.get("api_key"):
+            cfg["api_key"] = "***"
+        cams = {c.id: {"bridge": self.bridge_name(c), "caps": self.caps(c), "asleep": c.id in self.asleep}
+                for c in self.cameras.values()}
+        return web.json_response({**cfg, "enabled": bool(self.bridge_cfg), "bridge_cameras": self.bridge_cams,
+                                  "cameras": cams})
+
+    async def admin_put_bridge(self, request):
+        """{"url": "http://host:5080", "api_key"?} (docker-wyze-bridge 3.x), or {} to stop. Tested
+        before it's saved; cameras whose stream the bridge has get their controls."""
+        body = await self._json_body(request)
+        if not body.get("url"):
+            self.bridge_cfg, self.bridge_cams = None, {}
+            self.store.set_bridge(None)
+            self.asleep.clear()
+            self.publish(self.state())
+            return web.json_response({"enabled": False})
+        if not isinstance(body["url"], str) or not body["url"].startswith(("http://", "https://")):
+            raise web.HTTPBadRequest(text="url must be the bridge's http(s) address")
+        if body.get("api_key") == "***":
+            body["api_key"] = (self.bridge_cfg or {}).get("api_key")
+        cfg = {k: body[k] for k in ("url", "api_key") if body.get(k)}
+        cfg["url"] = cfg["url"].rstrip("/")
+        from ptz import bridge_cameras
+        try:
+            cams = await bridge_cameras(cfg["url"], cfg.get("api_key"), self.http)
+        except PTZError as e:
+            raise web.HTTPBadRequest(text=str(e))
+        self.bridge_cfg, self.bridge_cams = cfg, cams
+        self.store.set_bridge(cfg)
+        try:
+            await self.refresh_bridge()
+        except PTZError:
+            pass
+        self.publish(self.state())
+        return web.json_response({"enabled": True, "cameras": sorted(cams)})
+
+    async def _control(self, cam, body):
+        action, value = body.get("action"), body.get("value")
+        if action not in self.CONTROL_ACTIONS:
+            raise web.HTTPBadRequest(text=f"action must be one of {', '.join(self.CONTROL_ACTIONS)}")
+        need = "sleep" if action in ("sleep", "wake") else action
+        if need not in self.caps(cam):
+            raise web.HTTPNotFound(text=f"{cam.name} can't do that")
+        if action == "night_vision" and value not in ("on", "off", "auto"):
+            raise web.HTTPBadRequest(text="night_vision value must be on, off or auto")
+        if action == "status_light" and value not in ("on", "off"):
+            raise web.HTTPBadRequest(text="status_light value must be on or off")
+        lock = self._control_locks.setdefault(cam.id, asyncio.Lock())
+        if lock.locked() or time.monotonic() - self._control_last.get(cam.id, 0) < self.CONTROL_GAP:
+            raise web.HTTPConflict(text="The camera is still busy with the last change. Try again in a moment.")
+        async with lock:
+            b = self._bridge(cam)
+            try:
+                if action == "sleep":
+                    await b.set("power", "off")
+                elif action == "wake":
+                    await b.set("power", "on")
+                else:
+                    await b.set(action, value)
+            except PTZError as e:
+                raise web.HTTPBadGateway(text=str(e))
+            finally:
+                self._control_last[cam.id] = time.monotonic()
+        if action in ("sleep", "wake"):
+            self._set_asleep(cam, action == "sleep")
+        log.info("%s: %s%s", cam.id, action, f" {value}" if value else "")
+        return web.json_response({"ok": True, "asleep": cam.id in self.asleep})
+
+    async def watch_control(self, request):
+        """{"action": "sleep" | "wake" | "night_vision" | "status_light", "value"?: "on"|"off"|"auto"}"""
+        return await self._control(self._camera(request), await self._json_body(request))
+
+    async def admin_control(self, request):
+        cam = self.cameras.get(request.match_info["id"])
+        if cam is None:
+            raise web.HTTPNotFound(text="unknown camera")
+        return await self._control(cam, await self._json_body(request))
+
+    async def watch_ptz_info(self, request):
+        """Saved positions of a camera that can turn (the current position isn't available from
+        the bridge yet)."""
+        cam = self._camera(request)
+        if "presets" not in self.caps(cam):
+            raise web.HTTPNotFound(text=f"{cam.name} can't pan or tilt")
+        try:
+            presets = await self._bridge(cam).presets()
+        except PTZError as e:
+            raise web.HTTPBadGateway(text=str(e))
+        return web.json_response({"presets": presets, "position": None})
 
     # ---- found cameras ----------------------------------------------------------------
 
@@ -1367,12 +1553,14 @@ class Hub:
         cam = self.cameras.get(cam_id)
         if cam is None:
             raise web.HTTPNotFound(text="unknown camera")
-        cfg = cam.cfg.get("ptz")
+        cfg = self.controls_cfg(cam) if "ptz" in self.caps(cam) else None
         if not cfg:
             raise web.HTTPNotFound(text="this camera can't pan or tilt")
         if getattr(self, "ptz", None) is None:
             self.ptz = PTZ(self.http)
         body = await self._json_body(request)
+        if "save_preset" in body:
+            raise web.HTTPNotImplemented(text="Saving positions isn't supported by the camera bridge yet. Save them in the Wyze app.")
         try:
             await self.ptz.run(cam.id, cfg, body)
         except ValueError as e:
@@ -1738,6 +1926,7 @@ class Hub:
         self.watch_load()
         await self.advertise()
         asyncio.ensure_future(self._found_loop())
+        asyncio.ensure_future(self._bridge_loop())
         if self.history_cfg:
             async def connect_history():
                 while self._history is None and self.history_cfg:
@@ -1766,7 +1955,7 @@ class Hub:
         now = now or time.time()
         out = []
         for cam in list(self.cameras.values()):
-            if cam.loop:
+            if cam.loop or cam.id in self.asleep:
                 continue
             last = max(cam.latest_time, cam.started_at)
             if not cam.offline and now - last >= after:
@@ -1882,6 +2071,11 @@ class Hub:
         app.router.add_put("/api/admin/source", self.admin_put_source)
         app.router.add_get("/api/admin/history", self.admin_get_history)
         app.router.add_get("/api/admin/found", self.admin_found)
+        app.router.add_get("/api/admin/bridge", self.admin_get_bridge)
+        app.router.add_put("/api/admin/bridge", self.admin_put_bridge)
+        app.router.add_post("/api/admin/cameras/{id}/control", self.admin_control)
+        app.router.add_post("/api/watch/cameras/{cam}/control", self.watch_control)
+        app.router.add_get("/api/watch/cameras/{cam}/ptz", self.watch_ptz_info)
         app.router.add_post("/api/admin/found/{id}/{action}", self.admin_found_action)
         app.router.add_put("/api/admin/history", self.admin_put_history)
         app.router.add_get("/api/watch/cameras/{cam}/visitors", self.watch_visitors)

@@ -28,7 +28,7 @@ def cam(cid, loop=False):
 published = []
 stub = SimpleNamespace(settings={"offline_alert_after": 120, "offline_renotify": 1800},
                        cameras={"kitchen": cam("kitchen"), "bedroom": cam("bedroom"), "test": cam("test", loop=True)},
-                       publish=published.append)
+                       publish=published.append, asleep=set())
 check_offline = lambda now: hub.Hub.check_offline(stub, now)  # noqa: E731
 k, b = stub.cameras["kitchen"], stub.cameras["bedroom"]
 
@@ -59,6 +59,10 @@ newcam.latest_time, newcam.started_at = 0.0, T0
 stub.cameras = {"garage": newcam}
 stub.settings["offline_alert_after"] = 120
 check("a camera that never connected counts from hub start", check_offline(T0 + 60) == [] and check_offline(T0 + 121) != [])
+sleeper = cam("porch")
+stub.cameras = {"porch": sleeper}
+stub.asleep = {"porch"}
+check("a camera put to sleep is never reported offline", check_offline(T0 + 5000) == [] and not sleeper.offline)
 
 
 # Notice payload: phone gets it; no person category; collapses per camera

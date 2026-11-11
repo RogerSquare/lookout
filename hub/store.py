@@ -23,7 +23,7 @@ EDITABLE = {
 }
 CAMERA_FIELDS = {
     "id", "name", "role", "url", "sub_url", "detect_url", "streams", "hls_src", "hls_variants",
-    "min_person_height", "zone", "loop", "enabled", "ptz", "frigate",
+    "min_person_height", "zone", "loop", "enabled", "ptz", "frigate", "bridge",
 }
 ROLES = ("door", "other")
 _ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
@@ -71,6 +71,8 @@ def validate_camera(cam):
             for p in zone)
         if not ok:
             raise ConfigError("zone must be 3+ [x, y] points, each a 0-1 fraction of the frame")
+    if "bridge" in cam and not (isinstance(cam["bridge"], str) and cam["bridge"].strip()):
+        raise ConfigError("bridge must be the camera's stream name in the camera bridge")
     if "frigate" in cam and not (isinstance(cam["frigate"], str) and _ID.fullmatch(cam["frigate"])):
         raise ConfigError("frigate must be the camera's name in Frigate")
     if cam.get("ptz") is not None:
@@ -177,6 +179,18 @@ class Store:
     def set_dismissed(self, names):
         with self.lock:
             self.data["dismissed_cameras"] = sorted(names)
+            self._save()
+
+    def bridge(self):
+        """The camera bridge that sends commands (wyze-bridge 3.x): {url, api_key?} or None."""
+        return self.data.get("bridge")
+
+    def set_bridge(self, cfg):
+        with self.lock:
+            if cfg:
+                self.data["bridge"] = cfg
+            else:
+                self.data.pop("bridge", None)
             self._save()
 
     def history(self):

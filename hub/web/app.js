@@ -111,6 +111,7 @@ async function showApp() {
   loadHubForm();
   listen();
   loadFound(true);
+  loadBridge();
   setInterval(refreshTiles, 2000);
 }
 
@@ -283,6 +284,59 @@ function renderFound() {
 $("#auto-add").onchange = async e => {
   try { await api("/api/admin/settings", { method: "PUT", body: { auto_add_cameras: e.target.checked } }); await loadFound(true); }
   catch (x) { toast(x.message); e.target.checked = !e.target.checked; }
+};
+
+/* camera bridge: controls, with a test button for each */
+async function loadBridge(refresh) {
+  try { state.bridge = await api(`/api/admin/bridge${refresh ? "?refresh=1" : ""}`); } catch (x) { state.bridge = null; $("#br-status").textContent = x.message; }
+  renderBridge();
+}
+const testActions = {
+  sleep: [["Sleep", { action: "sleep" }], ["Wake", { action: "wake" }]],
+  night_vision: [["Night vision auto", { action: "night_vision", value: "auto" }]],
+  status_light: [["Status light off", { action: "status_light", value: "off" }], ["On", { action: "status_light", value: "on" }]],
+  ptz: [["◀", { pan: -1 }], ["▶", { pan: 1 }]],
+};
+function renderBridge() {
+  const b = state.bridge;
+  if (!b) return;
+  $("#bridge-note").textContent = b.enabled ? `${Object.keys(b.bridge_cameras).length} cameras on the bridge.` : "Off.";
+  if (!document.activeElement?.closest?.("#bridge-form")) { $("#br-url").value = b.url || ""; $("#br-key").value = b.api_key || ""; }
+  $("#br-off").hidden = !b.enabled;
+  $("#bridge-cams").replaceChildren(...(b.enabled ? state.config.cameras : []).map(cfg => {
+    const info = b.cameras[cfg.id] || { caps: [] };
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<span class="grow"><b></b><br><span class="muted"></span></span>`;
+    $("b", row).textContent = cfg.name || cfg.id;
+    $(".muted", row).textContent = info.caps.length ? (info.asleep ? "Asleep · " : "") + info.caps.join(", ").replaceAll("_", " ")
+                                                    : `Not on the bridge (looked for "${info.bridge || cfg.id}")`;
+    for (const cap of info.caps) for (const [label, body] of testActions[cap] || []) {
+      const btn = document.createElement("button"); btn.textContent = label;
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          if ("pan" in body) await api(`/api/admin/cameras/${encodeURIComponent(cfg.id)}/ptz`, { method: "POST", body });
+          else await api(`/api/admin/cameras/${encodeURIComponent(cfg.id)}/control`, { method: "POST", body });
+          toast(`${cfg.name || cfg.id}: ${label}`); await loadBridge();
+        } catch (x) { toast(x.message); }
+        btn.disabled = false;
+      };
+      row.append(btn);
+    }
+    return row;
+  }));
+}
+$("#bridge-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const st = $("#br-status"); st.textContent = "Connecting…";
+  try {
+    const r = await api("/api/admin/bridge", { method: "PUT", body: { url: $("#br-url").value.trim(), api_key: $("#br-key").value } });
+    st.textContent = ""; toast(`Camera bridge connected (${r.cameras.length} cameras)`); await loadBridge();
+  } catch (x) { st.textContent = x.message; }
+});
+$("#br-off").onclick = async () => {
+  try { await api("/api/admin/bridge", { method: "PUT", body: {} }); toast("Camera controls off"); await loadBridge(); }
+  catch (x) { toast(x.message); }
 };
 
 /* camera sheet + zone editor */
@@ -596,6 +650,7 @@ function listen() {
   on("alerts", a => { state.alerts = a; renderAlerts(); });
   on("detector", async () => { state.detector = await api("/api/admin/detector"); renderDetection(); });
   on("devices", () => { loadApps(); if (!$("#pair-panel").hidden) { $("#pair-panel").hidden = true; toast("App paired"); } });
+  on("camera_sleep", () => loadBridge());
   on("found_cameras", e => { if (state.found) { state.found.cameras = e.cameras; renderFound(); } if (e.added?.length) refresh(); });
   on("source", async () => { state.source = await api("/api/admin/source"); renderDetection(); renderRail(); });
 }
