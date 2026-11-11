@@ -54,6 +54,12 @@
         <div class="actions"><button id="find-btn">Find cameras</button><button class="primary" id="add-btn">Add camera</button></div>
       </header>
       <div id="found" class="found" hidden></div>
+      <div id="frigate-found" class="panel" hidden>
+        <h3>New in Frigate</h3>
+        <p class="muted">Cameras Frigate has that this hub doesn't yet.</p>
+        <div id="frigate-found-list" class="found-list"></div>
+        <label class="switch-row"><span class="grow">Add new Frigate cameras automatically<br><span class="muted">They start with alerts off, so a test camera can't send notifications.</span></span><input type="checkbox" role="switch" id="auto-add"></label>
+      </div>
       <div id="wall" class="wall"></div>
       <div id="wall-empty" class="empty" hidden>
         <h3>No cameras yet</h3>

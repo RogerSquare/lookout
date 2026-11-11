@@ -110,6 +110,7 @@ async function showApp() {
   loadApps();
   loadHubForm();
   listen();
+  loadFound(true);
   setInterval(refreshTiles, 2000);
 }
 
@@ -257,6 +258,31 @@ $("#find-btn").onclick = async () => {
         return b;
       }));
   } catch (x) { box.textContent = x.message; }
+};
+
+/* cameras Frigate has that the hub doesn't */
+async function loadFound(scan) {
+  try { state.found = await api(`/api/admin/found${scan ? "?scan=1" : ""}`); } catch { state.found = null; }
+  renderFound();
+}
+function renderFound() {
+  const f = state.found, box = $("#frigate-found");
+  box.hidden = !f || !f.available || (!f.cameras.length && !f.auto);
+  if (box.hidden) return;
+  $("#auto-add").checked = f.auto;
+  $("#frigate-found-list").replaceChildren(...f.cameras.map(c => {
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<span class="grow"><b></b><br><span class="muted"></span></span><button class="primary">Add</button><button>Not now</button>`;
+    $("b", row).textContent = c.name; $(".muted", row).textContent = c.url;
+    const [add, skip] = row.querySelectorAll("button");
+    add.onclick = async () => { try { await api(`/api/admin/found/${encodeURIComponent(c.id)}/add`, { method: "POST" }); toast(`${c.name} added`); await refresh(); await loadFound(); } catch (x) { toast(x.message); } };
+    skip.onclick = async () => { try { await api(`/api/admin/found/${encodeURIComponent(c.id)}/dismiss`, { method: "POST" }); await loadFound(); } catch (x) { toast(x.message); } };
+    return row;
+  }));
+}
+$("#auto-add").onchange = async e => {
+  try { await api("/api/admin/settings", { method: "PUT", body: { auto_add_cameras: e.target.checked } }); await loadFound(true); }
+  catch (x) { toast(x.message); e.target.checked = !e.target.checked; }
 };
 
 /* camera sheet + zone editor */
@@ -570,6 +596,7 @@ function listen() {
   on("alerts", a => { state.alerts = a; renderAlerts(); });
   on("detector", async () => { state.detector = await api("/api/admin/detector"); renderDetection(); });
   on("devices", () => { loadApps(); if (!$("#pair-panel").hidden) { $("#pair-panel").hidden = true; toast("App paired"); } });
+  on("found_cameras", e => { if (state.found) { state.found.cameras = e.cameras; renderFound(); } if (e.added?.length) refresh(); });
   on("source", async () => { state.source = await api("/api/admin/source"); renderDetection(); renderRail(); });
 }
 

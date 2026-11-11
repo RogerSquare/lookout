@@ -578,6 +578,7 @@ class Hub:
         # Frigate for event history and clips only, while the hub detects people itself
         self.history_cfg = (store.history() if store else None)
         self._history = None
+        self.found = []             # cameras Frigate has that the hub doesn't (see scan_found)
         self.choice = None          # what the profile picked: {model, backend, ms, fps}
         self._profile = None
         self.local = (_ExternalDetector() if self.source["type"] == "frigate"
@@ -754,11 +755,95 @@ class Hub:
         if old:
             await old.close()
         log.info("frigate %s at %s gives event history and clips", fr.version, fr.url)
+        asyncio.ensure_future(self._scan_quietly())
+
+    async def _scan_quietly(self):
+        try:
+            await self.scan_found()
+        except Exception as e:
+            log.info("looking for new cameras in Frigate: %s", e)
 
     async def stop_history(self):
         if self._history is not None:
             fr, self._history = self._history, None
             await fr.close()
+
+    # ---- found cameras ----------------------------------------------------------------
+
+    def _known(self, fcam, cams):
+        """A Frigate camera the hub already has: same id, same Frigate name, or same stream."""
+        tail = lambda u: (u or "").rstrip("/").rsplit("/", 1)[-1]
+        for c in cams:
+            if fcam["id"] in (c["id"], c.get("frigate")) or (fcam["url"] and fcam["url"] == c.get("url")):
+                return True
+            if fcam["url"] and tail(c.get("url")) == fcam["id"]:
+                return True
+        return False
+
+    async def scan_found(self):
+        """Frigate's cameras the hub doesn't have yet. With auto_add_cameras on they're added at
+        once, alerts off (a test camera mustn't start sending notifications). Returns
+        {"found": [...], "added": [...]}."""
+        if self.history is None or not self.store:
+            self.found = []
+            return {"found": [], "added": []}
+        fcams = await self.history.cameras()
+        dismissed = self.store.dismissed()
+        cams = self.store.cameras()
+        new = [f for f in fcams if f["url"] and not self._known(f, cams) and f["id"] not in dismissed]
+        added = []
+        if self.settings.get("auto_add_cameras"):
+            for f in new:
+                self._add_found(f, alerts=False)
+                added.append(f["id"])
+            new = []
+            if added:
+                await asyncio.get_running_loop().run_in_executor(None, self.apply_cameras)
+                log.info("added cameras found in Frigate: %s (alerts off)", ", ".join(added))
+        if new != self.found or added:
+            self.found = new
+            self.publish({"type": "found_cameras", "cameras": new, "added": added})
+        return {"found": new, "added": added}
+
+    def _add_found(self, f, alerts):
+        self.store.put_camera({"id": f["id"], "name": f["name"], "url": f["url"], "role": "other",
+                               "frigate": f["frigate"]})
+        if not alerts:
+            self.set_alerts(False, f["id"])
+
+    async def _found_loop(self):
+        while True:
+            await asyncio.sleep(300)
+            try:
+                await self.scan_found()
+            except Exception as e:
+                log.info("looking for new cameras in Frigate: %s", e)
+
+    async def admin_found(self, request):
+        if request.query.get("scan"):
+            try:
+                await self.scan_found()
+            except (FrigateError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+                raise web.HTTPBadGateway(text=f"frigate: {e}")
+        return web.json_response({"cameras": self.found, "auto": bool(self.settings.get("auto_add_cameras")),
+                                  "available": self.history is not None})
+
+    async def admin_found_action(self, request):
+        """POST /api/admin/found/{id}/add or /dismiss."""
+        fid, action = request.match_info["id"], request.match_info["action"]
+        f = next((c for c in self.found if c["id"] == fid), None)
+        if action == "dismiss":
+            self.store.set_dismissed(self.store.dismissed() | {fid})
+        elif action == "add":
+            if f is None:
+                raise web.HTTPNotFound(text="not a found camera")
+            self._add_found(f, alerts=True)
+            await asyncio.get_running_loop().run_in_executor(None, self.apply_cameras)
+        else:
+            raise web.HTTPNotFound()
+        self.found = [c for c in self.found if c["id"] != fid]
+        self.publish({"type": "found_cameras", "cameras": self.found, "added": [fid] if action == "add" else []})
+        return web.json_response({"ok": True, "cameras": self.found})
 
     def on_frigate_review(self, kind, review):
         cam = self.cameras.get(review["camera"])
@@ -1149,13 +1234,16 @@ class Hub:
         return web.json_response(mask_camera(cam))
 
     async def admin_delete_camera(self, request):
+        cam = self.cameras.get(request.match_info["id"])
+        if cam is not None:      # a removed camera isn't offered (or auto-added) again
+            self.store.set_dismissed(self.store.dismissed() | {self.frigate_name(cam)})
         if not self.store.delete_camera(request.match_info["id"]):
             raise web.HTTPNotFound(text="unknown camera")
         await asyncio.get_running_loop().run_in_executor(None, self.apply_cameras)
         return web.json_response({"ok": True})
 
     LIVE_SETTINGS = {"detect_power", "detect_fps", "confidence", "hide_after_seconds", "allow_legacy_token", "remote_url",
-                     "hub_name", "alerts_to"}
+                     "hub_name", "alerts_to", "auto_add_cameras"}
 
     async def admin_settings(self, request):
         patch = await self._json_body(request)
@@ -1649,6 +1737,7 @@ class Hub:
         asyncio.ensure_future(self._offline_loop())
         self.watch_load()
         await self.advertise()
+        asyncio.ensure_future(self._found_loop())
         if self.history_cfg:
             async def connect_history():
                 while self._history is None and self.history_cfg:
@@ -1792,6 +1881,8 @@ class Hub:
         app.router.add_post("/api/admin/cameras/{id}/ptz", self.admin_ptz)
         app.router.add_put("/api/admin/source", self.admin_put_source)
         app.router.add_get("/api/admin/history", self.admin_get_history)
+        app.router.add_get("/api/admin/found", self.admin_found)
+        app.router.add_post("/api/admin/found/{id}/{action}", self.admin_found_action)
         app.router.add_put("/api/admin/history", self.admin_put_history)
         app.router.add_get("/api/watch/cameras/{cam}/visitors", self.watch_visitors)
         app.router.add_get("/api/watch/visitors/{det}.jpg", self.watch_visitor_image)
