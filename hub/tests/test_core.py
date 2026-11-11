@@ -124,6 +124,12 @@ async def fresh_install():
             yaml = (data / "go2rtc.yaml").read_text()
             check("go2rtc config generated with the camera's restreams",
                   all(f"  porch{sfx}:" in yaml for sfx in ("", "_watch", "_phone")) and "porch_sd" not in yaml)
+            sys.path.insert(0, str(HERE.parent))
+            from streams import resolve
+            hd = resolve({"id": "porch", "url": "rtsp://x/y"}, 8554, "hub")["hls_variants"]
+            check("full-screen variant 'hd' is the camera's own restream", hd == {"phone": "porch_phone", "hd": "porch"}, str(hd))
+            old = resolve({"id": "porch", "url": "rtsp://x/y", "hls_variants": {"phone": "custom"}}, 8554, "hub")
+            check("a stored variant list still gets 'hd'", old["hls_variants"] == {"phone": "custom", "hd": "porch"})
 
             # Passwords are masked everywhere they're shown, and survive a save from the setup page
             async with s.put(f"{BASE}/api/admin/cameras/yard", json={"url": "rtsp://admin:hunter2@192.0.2.10/live"},

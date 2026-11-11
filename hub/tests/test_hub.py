@@ -337,6 +337,10 @@ async def watch_checks(s, go2rtc_requests):
     async with s.get(f"{BASE}/api/watch/cameras/street/stream.m3u8?v=phone&token={TOKEN}") as r:
         check("watch: ?v=phone serves the camera's phone variant",
               r.status == 200 and {"src": "street_phone", "mp4": ""} in go2rtc_requests)
+    async with s.get(f"{BASE}/api/watch/cameras", headers=auth) as r:
+        street = next(c for c in (await r.json())["cameras"] if c["id"] == "street")
+        check("watch: cameras list the HLS variants they offer", street.get("hls_variants") == ["phone"],
+              str(street.get("hls_variants")))
     async with s.get(f"{BASE}/api/watch/cameras/street/stream.m3u8?v=nope&token={TOKEN}") as r:
         check("watch: unknown variant falls back to the default stream", r.status == 200)
     # Follow the playlist the way AVPlayer would: relative URIs, token only in the query
