@@ -430,6 +430,10 @@ class Push:
         self._jwt = (None, 0.0)
         self._client = None
         self.alerts_to = None       # the hub's alerts_to setting (kept current by the hub)
+        # Live Activities (iPhone): push-to-start tokens per device, and the update tokens of the
+        # activities running per camera. Kept next to devices.json.
+        self.activity_path = path.with_name("activities.json")
+        self.activities = self._load_activities()
 
     def _load(self):
         try:
@@ -461,6 +465,87 @@ class Push:
             self.devices.pop(t, None)
         if gone:
             self._save()
+        if self.activities["start"].pop(device_id or "", None):
+            self._save_activities()
+
+    # ---- Live Activities (someone at a door camera, on the iPhone's Lock Screen and island) ----
+
+    ACTIVITY_STALE = 600         # an activity nobody ended goes grey after 10 minutes
+
+    def _load_activities(self):
+        try:
+            data = json.loads(self.activity_path.read_text(encoding="utf-8"))
+            return {"start": data.get("start") or {}, "running": data.get("running") or {}}
+        except (OSError, ValueError):
+            return {"start": {}, "running": {}}
+
+    def _save_activities(self):
+        try:
+            tmp = self.activity_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self.activities, indent=1), encoding="utf-8")
+            tmp.replace(self.activity_path)
+        except OSError as e:
+            log.warning("could not save live activity tokens: %s", e)
+
+    def register_activity_start(self, token, topic, env, device_id):
+        self.activities["start"][device_id or token] = {"token": token, "topic": topic, "env": env}
+        self._save_activities()
+
+    def register_activity(self, cam_id, token, topic, env):
+        self.activities["running"].setdefault(cam_id, {})[token] = {"topic": topic, "env": env,
+                                                                    "since": time.time()}
+        self._save_activities()
+
+    async def _activity_push(self, token, dev, payload):
+        host = self.cfg.get("url") or self.HOSTS.get(dev["env"], self.HOSTS["production"])
+        try:
+            r = await self._http().post(f"{host}/3/device/{token}", json=payload, headers={
+                "authorization": f"bearer {self._token()}", "apns-topic": f"{dev['topic']}.push-type.liveactivity",
+                "apns-push-type": "liveactivity", "apns-priority": "10"})
+        except Exception as e:
+            log.warning("push: live activity %s... failed: %s", token[:8], e)
+            return None
+        if r.status_code != 200:
+            reason = (r.json() if r.content else {}).get("reason", "")
+            log.warning("push: live activity %s... refused %s %s", token[:8], r.status_code, reason)
+        return r.status_code
+
+    async def start_activity(self, cam_id, cam_name):
+        """Someone at a door camera: start the Live Activity on each iPhone, or bring a running
+        one back to "someone's there"."""
+        now = int(time.time())
+        state = {"person": True, "since": now, "gone": None}
+        running = self.activities["running"].get(cam_id) or {}
+        for token, dev in list(running.items()):
+            await self._activity_push(token, dev, {"aps": {
+                "timestamp": now, "event": "update", "content-state": state, "stale-date": now + self.ACTIVITY_STALE}})
+        if running:
+            return
+        for key, dev in list(self.activities["start"].items()):
+            code = await self._activity_push(dev["token"], dev, {"aps": {
+                "timestamp": now, "event": "start", "content-state": state,
+                "attributes-type": "PersonActivityAttributes",
+                "attributes": {"cameraID": cam_id, "name": cam_name},
+                "stale-date": now + self.ACTIVITY_STALE,
+                "alert": {"title": "Someone's at the door", "body": cam_name}}})
+            if code == 410:
+                self.activities["start"].pop(key, None)
+                self._save_activities()
+            elif code == 200:
+                log.info("push: started the live activity for %s", cam_id)
+
+    async def end_activity(self, cam_id, since=None):
+        """They left: end the camera's Live Activities (gone from the Lock Screen after 2 min)."""
+        running = self.activities["running"].pop(cam_id, None)
+        if not running:
+            return
+        self._save_activities()
+        now = int(time.time())
+        for token, dev in running.items():
+            await self._activity_push(token, dev, {"aps": {
+                "timestamp": now, "event": "end",
+                "content-state": {"person": False, "since": int(since or dev.get("since") or now), "gone": now},
+                "dismissal-date": now + 120}})
 
     def _token(self):
         import jwt  # PyJWT (ES256 needs cryptography)
@@ -1248,6 +1333,10 @@ class Hub:
             asyncio.ensure_future(self.push.send(event["camera"], event.get("name", event["camera"]),
                                                  test=event.get("test", False), target=event.get("push"),
                                                  role=event.get("role", "other")))
+            if event.get("role") == "door":
+                asyncio.ensure_future(self.push.start_activity(event["camera"], event.get("name", event["camera"])))
+        if self.push and event["type"] == "person_gone":
+            asyncio.ensure_future(self.push.end_activity(event["camera"]))
 
     def publish_threadsafe(self, event):
         if self.loop is not None:
@@ -1895,6 +1984,26 @@ class Hub:
         self.push.register(token, topic, env, device_id=dev["id"] if dev else None)
         return web.json_response({"ok": True})
 
+    async def watch_activity_token(self, request):
+        """The iPhone's Live Activity tokens: {"kind": "start", "token", "topic", "env"} (lets the
+        hub start one), or {"kind": "update", "camera", "token", "topic", "env"} (a running one)."""
+        body = await self._json_body(request)
+        token = str(body.get("token", "")).lower()
+        topic, env = body.get("topic", ""), body.get("env", "production")
+        if (not re.fullmatch(r"[0-9a-f]{32,400}", token) or topic != "dev.rogersquare.lookout"
+                or env not in Push.HOSTS or body.get("kind") not in ("start", "update")):
+            raise web.HTTPBadRequest(text="bad token, kind, topic or env")
+        if self.push is None:
+            raise web.HTTPServiceUnavailable(text="push not configured on this hub")
+        dev = request.get("device")
+        if body["kind"] == "start":
+            self.push.register_activity_start(token, topic, env, dev["id"] if dev else None)
+        else:
+            if body.get("camera") not in self.cameras:
+                raise web.HTTPNotFound(text="unknown camera")
+            self.push.register_activity(body["camera"], token, topic, env)
+        return web.json_response({"ok": True})
+
     async def watch_cameras(self, request):
         return web.json_response({"alerts": self.alerts_payload(),
                                   "cameras": [c.watch_info() for c in self.cameras.values()]})
@@ -2171,6 +2280,7 @@ class Hub:
         app.router.add_post("/api/watch/cameras/{cam}/control", self.watch_control)
         app.router.add_get("/api/watch/cameras/{cam}/ptz", self.watch_ptz_info)
         app.router.add_get("/api/watch/cameras/{cam}/schedule", self.watch_get_schedule)
+        app.router.add_post("/api/watch/activity-token", self.watch_activity_token)
         app.router.add_put("/api/watch/cameras/{cam}/schedule", self.watch_put_schedule)
         app.router.add_put("/api/admin/cameras/{id}/schedule", self.admin_put_schedule)
         app.router.add_post("/api/admin/found/{id}/{action}", self.admin_found_action)

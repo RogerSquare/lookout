@@ -47,6 +47,16 @@ struct RootView: View {
             if url.scheme == "lookout", url.host() == "pair" {
                 Task { await pairing.open(url.absoluteString) }
             }
+            // From a widget, the Live Activity or Control Center: open that camera
+            if url.scheme == "lookout", url.host() == "camera", let id = url.pathComponents.dropFirst().first {
+                AlertRouter.shared.open(id)
+            }
+            if url.scheme == "lookout", url.host() == "door" {
+                Task {
+                    let cams = (try? await HubClient().cameras().cameras) ?? []
+                    if let cam = cams.first(where: { $0.role == "door" }) ?? cams.first { AlertRouter.shared.open(cam.id) }
+                }
+            }
         }
         .onChange(of: phase) { _, p in
             if p == .background { lock.lockIfNeeded() }

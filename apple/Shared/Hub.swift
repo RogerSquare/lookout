@@ -20,11 +20,13 @@ struct HubCamera: Codable, Identifiable, Equatable {
     var caps: [String]? = nil
     /// The hub put it to sleep (or it was switched off): not offline, just resting
     var asleep: Bool? = nil
+    /// "door" cameras get "Someone's at the door" alerts and the Live Activity
+    var role: String? = nil
     /// When the hub puts it to sleep and wakes it
     var sleepSchedule: SleepSchedule? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, name, connected, person, since, alerts, frame, hls, mjpeg, ptz, caps, asleep
+        case id, name, connected, person, since, alerts, frame, hls, mjpeg, ptz, caps, asleep, role
         case sleepSchedule = "sleep_schedule"
         case lastSeen = "last_seen"
         case hlsVariants = "hls_variants"
@@ -287,6 +289,20 @@ struct HubClient {
         var body: [String: Any] = ["action": action]
         if let value { body["value"] = value }
         _ = try await send("POST", "/api/watch/cameras/\(cam.id)/control", json: body, timeout: 10)
+    }
+
+    /// Give the hub a Live Activity token: kind "start" (push-to-start) or "update" (a running
+    /// activity at `camera`).
+    func registerActivityToken(_ token: Data, kind: String, camera: String? = nil) async throws {
+        #if DEBUG
+        let env = "sandbox"
+        #else
+        let env = "production"
+        #endif
+        var body: [String: Any] = ["kind": kind, "token": token.map { String(format: "%02x", $0) }.joined(),
+                                   "topic": Bundle.main.bundleIdentifier ?? "", "env": env]
+        if let camera { body["camera"] = camera }
+        _ = try await send("POST", "/api/watch/activity-token", json: body, timeout: 10)
     }
 
     /// Put a camera to sleep (its video off) or wake it.

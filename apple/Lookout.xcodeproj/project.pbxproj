@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		6902C2E5E0A2402027143B51 /* LookoutWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 98DFF1513A61C880DB1FAA52 /* LookoutWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		049F828002E7E3F6E8536094 /* LookoutWatchWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 65859CE04BF1826752C06D89 /* LookoutWatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B1000000000000000000000D /* LookoutWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* LookoutWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -25,6 +26,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 674BFA94F852AF614FEBDB76;
 			remoteInfo = LookoutWatchWidget;
+		};
+		B1000000000000000000000A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 07015BCF3C680886983B6884 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B10000000000000000000001;
+			remoteInfo = LookoutWidgets;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -51,6 +59,17 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B1000000000000000000000C /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B1000000000000000000000D /* LookoutWidgets.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -59,6 +78,8 @@
 		209628789525C4F6E86CACDE /* Lookout-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Lookout-Info.plist"; sourceTree = "<group>"; };
 		A35810139B9D18F90706A3BC /* LookoutWatch-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "LookoutWatch-Info.plist"; sourceTree = "<group>"; };
 		65859CE04BF1826752C06D89 /* LookoutWatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LookoutWatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000002 /* LookoutWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LookoutWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1000000000000000000000E /* LookoutWidgets-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "LookoutWidgets-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -66,6 +87,7 @@
 		9BEC71E7D5393C85B284C3A8 /* Lookout */ = {isa = PBXFileSystemSynchronizedRootGroup; path = Lookout; sourceTree = "<group>"; };
 		F41F0CDE6FB28B9E83F4C74F /* LookoutWatch */ = {isa = PBXFileSystemSynchronizedRootGroup; path = LookoutWatch; sourceTree = "<group>"; };
 		7E3BA8BD0111E4B0E70D763C /* LookoutWatchWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; path = LookoutWatchWidget; sourceTree = "<group>"; };
+		B10000000000000000000003 /* LookoutWidgets */ = {isa = PBXFileSystemSynchronizedRootGroup; path = LookoutWidgets; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -90,6 +112,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B10000000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -100,7 +129,9 @@
 				9BEC71E7D5393C85B284C3A8 /* Lookout */,
 				F41F0CDE6FB28B9E83F4C74F /* LookoutWatch */,
 				7E3BA8BD0111E4B0E70D763C /* LookoutWatchWidget */,
+				B10000000000000000000003 /* LookoutWidgets */,
 				209628789525C4F6E86CACDE /* Lookout-Info.plist */,
+				B1000000000000000000000E /* LookoutWidgets-Info.plist */,
 				A35810139B9D18F90706A3BC /* LookoutWatch-Info.plist */,
 				118B32849E5E3B14974B2995 /* Products */,
 			);
@@ -112,6 +143,7 @@
 				9417E2FCFD3F4CD33DFB3621 /* Lookout.app */,
 				98DFF1513A61C880DB1FAA52 /* LookoutWatch.app */,
 				65859CE04BF1826752C06D89 /* LookoutWatchWidget.appex */,
+				B10000000000000000000002 /* LookoutWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -127,11 +159,13 @@
 				0A914019F088E7AB3DDC4402 /* Frameworks */,
 				D689B54E0D19DB64694B0BC6 /* Resources */,
 				A5FF24E56F8584F782FFCE35 /* Embed Watch Content */,
+				B1000000000000000000000C /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				899531C8C69AFE71CE5180EB /* PBXTargetDependency */,
+				B1000000000000000000000B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A51E4ADE3A5C33EFBCF22AEE /* Shared */,
@@ -186,6 +220,27 @@
 			productReference = 65859CE04BF1826752C06D89 /* LookoutWatchWidget.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		B10000000000000000000001 /* LookoutWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B10000000000000000000007 /* Build configuration list for PBXNativeTarget "LookoutWidgets" */;
+			buildPhases = (
+				B10000000000000000000004 /* Sources */,
+				B10000000000000000000005 /* Frameworks */,
+				B10000000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A51E4ADE3A5C33EFBCF22AEE /* Shared */,
+				B10000000000000000000003 /* LookoutWidgets */,
+			);
+			name = LookoutWidgets;
+			productName = LookoutWidgets;
+			productReference = B10000000000000000000002 /* LookoutWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -213,6 +268,7 @@
 				66706CD8C665543E5E129DD1 /* Lookout */,
 				A37D7E5627B390E88590117E /* LookoutWatch */,
 							674BFA94F852AF614FEBDB76 /* LookoutWatchWidget */,
+				B10000000000000000000001 /* LookoutWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -233,6 +289,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		9E73B92022F0B3F69655B6F4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10000000000000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -263,6 +326,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B10000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -275,6 +345,11 @@
 			isa = PBXTargetDependency;
 			target = 674BFA94F852AF614FEBDB76 /* LookoutWatchWidget */;
 			targetProxy = E4ED43E1CE16DBE403D121BB /* PBXContainerItemProxy */;
+		};
+		B1000000000000000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B10000000000000000000001 /* LookoutWidgets */;
+			targetProxy = B1000000000000000000000A /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -324,6 +399,7 @@
 				CODE_SIGN_ENTITLEMENTS = Lookout.entitlements;
 				INFOPLIST_KEY_CFBundleDisplayName = Lookout;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -347,6 +423,7 @@
 				CODE_SIGN_ENTITLEMENTS = Lookout.entitlements;
 				INFOPLIST_KEY_CFBundleDisplayName = Lookout;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -444,6 +521,43 @@
 			};
 			name = Release;
 		};
+		B10000000000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "LookoutWidgets-Info.plist";
+				CODE_SIGN_ENTITLEMENTS = LookoutWidgets.entitlements;
+				INFOPLIST_KEY_CFBundleDisplayName = Lookout;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.rogersquare.lookout.widgets;
+				PRODUCT_NAME = LookoutWidgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		B10000000000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "LookoutWidgets-Info.plist";
+				CODE_SIGN_ENTITLEMENTS = LookoutWidgets.entitlements;
+				INFOPLIST_KEY_CFBundleDisplayName = Lookout;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.rogersquare.lookout.widgets;
+				PRODUCT_NAME = LookoutWidgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -479,6 +593,15 @@
 			buildConfigurations = (
 				0D5EFC7546D192F38F7EE200 /* Debug */,
 				5A93C8FA3060920ABD123C53 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B10000000000000000000007 /* Build configuration list for PBXNativeTarget "LookoutWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B10000000000000000000008 /* Debug */,
+				B10000000000000000000009 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.widgetkit-extension</string>
+	</dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- At home: the hub's API over HTTPS with its own (pinned) certificate. Away: its public HTTPS address. -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- Keychain items (the pairing and this device's key) shared by the app and its extensions -->
+	<key>LookoutKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)dev.rogersquare.lookout.shared</string>
+</dict>
+</plist>

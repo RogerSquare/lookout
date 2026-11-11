@@ -9,6 +9,7 @@ final class PhoneAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
                      didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
+        Task { @MainActor in LiveActivities.start() }
         #if DEBUG
         if Demo.enabled { return true }      // demo screenshots: no permission prompt over the cameras
         #endif
