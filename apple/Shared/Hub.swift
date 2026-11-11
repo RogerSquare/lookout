@@ -14,11 +14,18 @@ struct HubCamera: Codable, Identifiable, Equatable {
     let mjpeg: String?
     /// The camera can pan and tilt (hubs before 0.7 don't say)
     let ptz: Bool?
+    /// stream.m3u8?v=<name> choices, e.g. "phone", "hd" (older hubs don't say)
+    var hlsVariants: [String]? = nil
+    /// Extra controls the camera has, e.g. "sleep", "night_vision" (none from hubs yet)
+    var caps: [String]? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, name, connected, person, since, alerts, frame, hls, mjpeg, ptz
+        case id, name, connected, person, since, alerts, frame, hls, mjpeg, ptz, caps
         case lastSeen = "last_seen"
+        case hlsVariants = "hls_variants"
     }
+
+    func offers(_ variant: String) -> Bool { hlsVariants?.contains(variant) ?? false }
 
     var lastSeenDate: Date? { lastSeen.flatMap(Self.parse) }
 
@@ -219,6 +226,13 @@ struct HubClient {
     /// Nudge a camera that can turn: pan/tilt -1...1 (1 is about 30 degrees).
     func ptz(_ cam: HubCamera, pan: Double, tilt: Double) async throws {
         _ = try await send("POST", "/api/watch/cameras/\(cam.id)/ptz", json: ["pan": pan, "tilt": tilt], timeout: 10)
+    }
+
+    /// One of the camera's controls (its `caps`): "sleep", "wake", "night_vision", "status_light".
+    func control(_ cam: HubCamera, action: String, value: String? = nil) async throws {
+        var body: [String: Any] = ["action": action]
+        if let value { body["value"] = value }
+        _ = try await send("POST", "/api/watch/cameras/\(cam.id)/control", json: body, timeout: 10)
     }
 
     func hlsURL(_ cam: HubCamera, variant: String? = nil) async -> URL? {
