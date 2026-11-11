@@ -82,6 +82,7 @@ struct PhoneTabs: View {
 
     @StateObject private var store = CameraStore()
     @ObservedObject private var router = AlertRouter.shared
+    @ObservedObject private var sleepState = SleepState.shared
     @Environment(\.scenePhase) private var phase
     @State private var page: Page = ProcessInfo.processInfo.arguments.contains("-openEvents") ? .events : .live
 
@@ -96,6 +97,12 @@ struct PhoneTabs: View {
             Tab("Settings", systemImage: "gearshape.fill", value: Page.settings) {
                 SettingsView(store: store, showsDone: false)
             }
+        }
+        .alert("Couldn't change the camera", isPresented: Binding(get: { sleepState.error != nil },
+                                                                   set: { if !$0 { sleepState.error = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(sleepState.error ?? "")
         }
         // A person alert opens its camera on the Live tab
         .onChange(of: router.requested) { _, id in if id != nil { page = .live } }
@@ -329,6 +336,15 @@ struct PhoneHome: View {
                 Divider()
                 Button { showArrange = true } label: {
                     Label("Arrange Cameras", systemImage: "arrow.up.arrow.down")
+                }
+                if store.cameras.contains(where: { $0.can("sleep") }) {
+                    Divider()
+                    Button {
+                        Task { await SleepState.shared.setAll(store.cameras, asleep: true, client: store.client) }
+                    } label: { Label("Sleep All Cameras", systemImage: "moon.zzz") }
+                    Button {
+                        Task { await SleepState.shared.setAll(store.cameras, asleep: false, client: store.client) }
+                    } label: { Label("Wake All Cameras", systemImage: "sun.max") }
                 }
             } label: {
                 Image(systemName: layout.symbol)

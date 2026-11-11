@@ -72,7 +72,7 @@ async def main():
     data = Path(tempfile.mkdtemp())
     env = {**os.environ, "LOOKOUT_DATA": str(data), "LOOKOUT_CONFIG": str(data / "none.json"), "LOOKOUT_PORT": str(PORT),
            "LOOKOUT_HTTPS_PORT": str(HTTPS), "LOOKOUT_RTSP_PORT": str(RTSP), "LOOKOUT_GO2RTC_API_PORT": str(API),
-           "LOOKOUT_VERSION": "test", "LOOKOUT_BONJOUR": "0"}
+           "LOOKOUT_VERSION": "test", "LOOKOUT_BONJOUR": "0", "LOOKOUT_SCHEDULE_EVERY": "1"}
     proc = subprocess.Popen([sys.executable, str(HERE.parent / "hub.py")], env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -206,6 +206,44 @@ async def main():
             async with s.post(f"{BASE}/api/admin/cameras/fixed/control", json={"action": "status_light", "value": "off"},
                               headers=A) as r:
                 check("setup page test button", r.status == 200 and seen[-1][:3] == ("fixedcam", "status_light", "off"))
+
+            # ---- sleep schedules ----
+            for body, why in (({"sleep": "25:00", "wake": "07:00"}, "bad time"),
+                              ({"sleep": "07:00", "wake": "07:00"}, "same times"),
+                              ({"sleep": "21:00", "wake": "07:00", "days": [9]}, "bad day"),
+                              ({"sleep": "21:00", "wake": "07:00", "tz": "Mars/Base"}, "bad time zone")):
+                async with s.put(f"{BASE}/api/watch/cameras/fixed/schedule", json=body, headers=app) as r:
+                    check(f"schedule refused: {why}", r.status == 400, str(r.status))
+            async with s.put(f"{BASE}/api/watch/cameras/kitchen/schedule", json={"sleep": "21:00", "wake": "07:00"},
+                             headers=app) as r:
+                check("a camera that can't sleep gets no schedule (404)", r.status == 404)
+            import datetime as _d
+            now = _d.datetime.now(_d.timezone.utc)
+            at = now.strftime("%H:%M")
+            later = (now + _d.timedelta(hours=1)).strftime("%H:%M")
+            await asyncio.sleep(2.1)
+            n = len(seen)
+            async with s.put(f"{BASE}/api/watch/cameras/fixed/schedule",
+                             json={"sleep": at, "wake": later, "tz": "UTC"}, headers=app) as r:
+                check("schedule saved", r.status == 200 and (await r.json())["schedule"]["days"] == list(range(7)))
+            async with s.get(f"{BASE}/api/watch/cameras/fixed/schedule", headers=app) as r:
+                check("schedule read back", (await r.json())["schedule"]["sleep"] == at)
+            for _ in range(40):
+                if any(x[:3] == ("fixedcam", "power", "off") for x in seen[n:]):
+                    break
+                await asyncio.sleep(0.25)
+            check("the hub put the camera to sleep on schedule",
+                  any(x[:3] == ("fixedcam", "power", "off") for x in seen[n:]), str(seen[n:]))
+            async with s.get(f"{BASE}/api/watch/cameras", headers=app) as r:
+                fx = next(c for c in (await r.json())["cameras"] if c["id"] == "fixed")
+                check("apps see it asleep, with its schedule", fx["asleep"] is True and fx["sleep_schedule"]["wake"] == later)
+            await asyncio.sleep(2)
+            check("sent once, not every tick", sum(1 for x in seen[n:] if x[:3] == ("fixedcam", "power", "off")) == 1)
+            async with s.put(f"{BASE}/api/watch/cameras/fixed/schedule", json={}, headers=app) as r:
+                check("schedule removed", r.status == 200 and (await r.json())["schedule"] is None)
+            await asyncio.sleep(2.1)
+            async with s.post(f"{BASE}/api/watch/cameras/fixed/control", json={"action": "wake"}, headers=app) as r:
+                pass
 
             POWER["pancam"] = "off"                  # switched off elsewhere (the Wyze app)
             async with s.get(f"{BASE}/api/admin/bridge?refresh=1", headers=A) as r:

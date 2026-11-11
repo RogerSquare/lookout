@@ -239,6 +239,10 @@ struct CameraSettingsView: View {
                                                      set: { prefs.setShowsOnWatch(cam.id, $0) }))
                     }
 
+                    if cam.can("sleep") {
+                        SleepScheduleSection(camera: cam, client: store.client)
+                    }
+
                     Text("Alerts are shared with Lookout on your PC and projector.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -339,5 +343,115 @@ struct CameraThumbnail: View {
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
             }
         }
+    }
+}
+
+/// When the hub puts this camera to sleep and wakes it. Kept on the hub, so it runs even when
+/// this iPhone is off or away.
+struct SleepScheduleSection: View {
+    let camera: HubCamera
+    let client: HubClient
+    @State private var enabled = false
+    @State private var sleepAt = SleepScheduleSection.time("21:00")
+    @State private var wakeAt = SleepScheduleSection.time("07:00")
+    @State private var days: Set<Int> = Set(0..<7)          // 0 = Monday, like the hub
+    @State private var loaded = false
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GlassGroup {
+                GlassToggleRow(title: "Sleep Schedule",
+                               subtitle: "The hub turns the camera off and on again, even when this iPhone is off",
+                               icon: SettingsIcon("moon.zzz.fill", .indigo), isOn: $enabled)
+                if enabled {
+                    Divider().padding(.leading, 58)
+                    DatePicker("Sleep at", selection: $sleepAt, displayedComponents: .hourAndMinute)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                    Divider().padding(.leading, 16)
+                    DatePicker("Wake at", selection: $wakeAt, displayedComponents: .hourAndMinute)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                    Divider().padding(.leading, 16)
+                    HStack(spacing: 6) {
+                        ForEach(Self.dayOrder, id: \.self) { d in
+                            let on = days.contains(d)
+                            Button {
+                                if on && days.count > 1 { days.remove(d) } else { days.insert(d) }
+                            } label: {
+                                Text(Self.dayLetter(d))
+                                    .font(.subheadline.weight(.semibold))
+                                    .frame(maxWidth: .infinity, minHeight: 34)
+                                    .foregroundStyle(on ? Color.white : Color.primary)
+                                    .background(Circle().fill(on ? Color.indigo : Color.clear))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(Self.dayName(d))
+                            .accessibilityAddTraits(on ? .isSelected : [])
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                }
+            }
+            Text(error ?? (enabled ? "Days are when it goes to sleep. While asleep there are no alerts from it, and Frigate doesn't record it." : ""))
+                .font(.footnote)
+                .foregroundStyle(error == nil ? Color.secondary : Color.red)
+                .padding(.horizontal, 6)
+        }
+        .onAppear {
+            guard !loaded else { return }
+            if let sch = camera.sleepSchedule {
+                enabled = sch.enabled
+                sleepAt = Self.time(sch.sleep)
+                wakeAt = Self.time(sch.wake)
+                days = Set(sch.days)
+            }
+            loaded = true
+        }
+        // Saved a moment after the last change
+        .task(id: signature) {
+            guard loaded else { return }
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            await save()
+        }
+    }
+
+    private var signature: String {
+        "\(enabled)|\(Self.string(sleepAt))|\(Self.string(wakeAt))|\(days.sorted())"
+    }
+
+    private func save() async {
+        let sch = SleepSchedule(enabled: enabled, sleep: Self.string(sleepAt), wake: Self.string(wakeAt),
+                                days: days.sorted(), tz: TimeZone.current.identifier)
+        guard sch != camera.sleepSchedule, !(camera.sleepSchedule == nil && !enabled) else { return }
+        guard sch.sleep != sch.wake else {
+            error = "Sleep and wake can't be the same time."
+            return
+        }
+        do {
+            try await client.setSchedule(camera, sch)
+            error = nil
+        } catch {
+            self.error = "Couldn't save the schedule: \(error.localizedDescription)"
+        }
+    }
+
+    /// Monday-first or Sunday-first, following the iPhone's calendar
+    private static var dayOrder: [Int] {
+        Calendar.current.firstWeekday == 2 ? Array(0..<7) : [6, 0, 1, 2, 3, 4, 5]
+    }
+    /// Hub day (0 = Monday) -> Calendar weekday symbols index (0 = Sunday)
+    private static func symbolIndex(_ d: Int) -> Int { (d + 1) % 7 }
+    private static func dayLetter(_ d: Int) -> String { Calendar.current.veryShortWeekdaySymbols[symbolIndex(d)] }
+    private static func dayName(_ d: Int) -> String { Calendar.current.weekdaySymbols[symbolIndex(d)] }
+
+    private static func time(_ hhmm: String) -> Date {
+        let parts = hhmm.split(separator: ":").compactMap { Int($0) }
+        return Calendar.current.date(bySettingHour: parts.first ?? 0, minute: parts.last ?? 0, second: 0, of: Date()) ?? Date()
+    }
+
+    private static func string(_ date: Date) -> String {
+        let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
     }
 }

@@ -658,8 +658,9 @@ struct CameraControlsBar: View {
                 if controls.contains(.sleep) || controls.contains(.nightVision) {
                     VStack(spacing: 12) {
                         if controls.contains(.sleep) {
-                            RoundButton(symbol: "moon.zzz.fill", label: "Put Camera to Sleep") {
-                                send("sleep", nil)
+                            RoundButton(symbol: camera.isAsleep ? "sun.max.fill" : "moon.zzz.fill",
+                                        label: camera.isAsleep ? "Wake Camera" : "Put Camera to Sleep") {
+                                Task { await SleepState.shared.set(camera, asleep: !camera.isAsleep, client: client) }
                             }
                         }
                         if controls.contains(.nightVision) {

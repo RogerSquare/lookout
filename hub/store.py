@@ -181,6 +181,20 @@ class Store:
             self.data["dismissed_cameras"] = sorted(names)
             self._save()
 
+    def schedules(self):
+        """Sleep schedules: {camera id: {enabled, sleep "HH:MM", wake "HH:MM", days [0-6, Monday 0], tz}}."""
+        return dict(self.data.get("sleep_schedules") or {})
+
+    def set_schedule(self, cam_id, sched):
+        with self.lock:
+            all_ = dict(self.data.get("sleep_schedules") or {})
+            if sched:
+                all_[cam_id] = sched
+            else:
+                all_.pop(cam_id, None)
+            self.data["sleep_schedules"] = all_
+            self._save()
+
     def bridge(self):
         """The camera bridge that sends commands (wyze-bridge 3.x): {url, api_key?} or None."""
         return self.data.get("bridge")
@@ -277,3 +291,30 @@ class Store:
             self.data["settings"].update(patch)
             self._save()
         return dict(self.data["settings"])
+
+
+def validate_schedule(body):
+    """A sleep schedule from an app or the setup page, cleaned, or ConfigError."""
+    import re as _re
+    from zoneinfo import ZoneInfo
+    if not isinstance(body, dict):
+        raise ConfigError("expected a schedule object")
+    out = {"enabled": bool(body.get("enabled", True))}
+    for key in ("sleep", "wake"):
+        v = body.get(key)
+        if not isinstance(v, str) or not _re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", v):
+            raise ConfigError(f"{key} must be a time like 21:30")
+        out[key] = v
+    if out["sleep"] == out["wake"]:
+        raise ConfigError("sleep and wake can't be the same time")
+    days = body.get("days", list(range(7)))
+    if not isinstance(days, list) or not days or not all(isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= 6 for d in days):
+        raise ConfigError("days must be a list of weekdays, 0 (Monday) to 6 (Sunday)")
+    out["days"] = sorted(set(days))
+    tz = body.get("tz") or "UTC"
+    try:
+        ZoneInfo(tz)
+    except Exception:
+        raise ConfigError("tz must be a time zone name like America/Chicago")
+    out["tz"] = tz
+    return out

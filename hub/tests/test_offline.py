@@ -64,6 +64,35 @@ stub.cameras = {"porch": sleeper}
 stub.asleep = {"porch"}
 check("a camera put to sleep is never reported offline", check_offline(T0 + 5000) == [] and not sleeper.offline)
 
+# ---- sleep schedules: which sleeps/wakes are due ----
+from datetime import datetime as _dt  # noqa: E402
+from zoneinfo import ZoneInfo  # noqa: E402
+
+CHI = ZoneInfo("America/Chicago")
+sched = {"bedroom": {"enabled": True, "sleep": "21:00", "wake": "07:00", "days": [0, 1, 2, 3, 4], "tz": "America/Chicago"}}
+sstub = SimpleNamespace(store=SimpleNamespace(schedules=lambda: sched), cameras={"bedroom": cam("bedroom")},
+                        caps=lambda c: ["sleep"], _schedule_done=set(), SCHEDULE_WINDOW=180)
+due = lambda y, mo, d, h, mi: [(c.id, a) for c, a, k in hub.Hub.due_schedule_actions(  # noqa: E731
+    sstub, _dt(y, mo, d, h, mi, tzinfo=CHI).timestamp())]
+# 2026-11-09 is a Monday
+check("sleep fires at its time on a schedule day (Monday 21:01)", due(2026, 11, 9, 21, 1) == [("bedroom", "sleep")])
+check("not before it", due(2026, 11, 9, 20, 58) == [])
+check("not long after it (missed by more than the window)", due(2026, 11, 9, 21, 10) == [])
+check("overnight wake fires the next morning (Tuesday 07:00)", due(2026, 11, 10, 7, 0) == [("bedroom", "wake")])
+check("no sleep on a day off (Saturday)", due(2026, 11, 14, 21, 1) == [])
+check("Saturday-morning wake still follows Friday night's sleep", due(2026, 11, 14, 7, 1) == [("bedroom", "wake")])
+check("no wake on Monday morning (Sunday had no sleep)", due(2026, 11, 9, 7, 1) == [])
+ts = _dt(2026, 11, 9, 21, 1, tzinfo=CHI).timestamp()
+for c, a, k in hub.Hub.due_schedule_actions(sstub, ts):
+    sstub._schedule_done.add(k)
+check("each one fires once", hub.Hub.due_schedule_actions(sstub, ts + 30) == [])
+sched["bedroom"]["enabled"] = False
+check("a schedule turned off does nothing", due(2026, 11, 10, 21, 1) == [])
+sched["bedroom"] = {"enabled": True, "sleep": "09:00", "wake": "18:00", "days": [5, 6], "tz": "America/Chicago"}
+check("same-day wake (weekend 9-18): wake on Saturday 18:00", due(2026, 11, 14, 18, 1) == [("bedroom", "wake")])
+sstub.caps = lambda c: []
+check("a camera that can't sleep is skipped", due(2026, 11, 14, 9, 1) == [])
+
 
 # Notice payload: phone gets it; no person category; collapses per camera
 class Client:
