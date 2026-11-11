@@ -23,7 +23,7 @@ EDITABLE = {
 }
 CAMERA_FIELDS = {
     "id", "name", "role", "url", "sub_url", "detect_url", "streams", "hls_src", "hls_variants",
-    "min_person_height", "zone", "loop", "enabled", "ptz", "frigate", "bridge",
+    "min_person_height", "zone", "loop", "enabled", "ptz", "frigate", "bridge", "on_demand",
 }
 ROLES = ("door", "other")
 _ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
@@ -71,6 +71,8 @@ def validate_camera(cam):
             for p in zone)
         if not ok:
             raise ConfigError("zone must be 3+ [x, y] points, each a 0-1 fraction of the frame")
+    if "on_demand" in cam and not isinstance(cam["on_demand"], bool):
+        raise ConfigError("on_demand must be true or false")
     if "bridge" in cam and not (isinstance(cam["bridge"], str) and cam["bridge"].strip()):
         raise ConfigError("bridge must be the camera's stream name in the camera bridge")
     if "frigate" in cam and not (isinstance(cam["frigate"], str) and _ID.fullmatch(cam["frigate"])):

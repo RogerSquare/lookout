@@ -22,11 +22,14 @@ struct HubCamera: Codable, Identifiable, Equatable {
     var asleep: Bool? = nil
     /// "door" cameras get "Someone's at the door" alerts and the Live Activity
     var role: String? = nil
+    /// Streamed only while someone watches (a solar or battery camera): tiles don't stream it
+    var onDemand: Bool? = nil
     /// When the hub puts it to sleep and wakes it
     var sleepSchedule: SleepSchedule? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, name, connected, person, since, alerts, frame, hls, mjpeg, ptz, caps, asleep, role
+        case onDemand = "on_demand"
         case sleepSchedule = "sleep_schedule"
         case lastSeen = "last_seen"
         case hlsVariants = "hls_variants"
@@ -35,6 +38,7 @@ struct HubCamera: Codable, Identifiable, Equatable {
     func offers(_ variant: String) -> Bool { hlsVariants?.contains(variant) ?? false }
     func can(_ cap: String) -> Bool { caps?.contains(cap) ?? (cap == "ptz" && ptz == true) }
     var isAsleep: Bool { asleep ?? false }
+    var isOnDemand: Bool { onDemand ?? false }
 
     var lastSeenDate: Date? { lastSeen.flatMap(Self.parse) }
 

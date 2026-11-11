@@ -124,6 +124,18 @@ async def fresh_install():
             yaml = (data / "go2rtc.yaml").read_text()
             check("go2rtc config generated with the camera's restreams",
                   all(f"  porch{sfx}:" in yaml for sfx in ("", "_watch", "_phone")) and "porch_sd" not in yaml)
+            async with s.post(f"{BASE}/api/admin/cameras", json={"id": "solar", "name": "Solar", "on_demand": True,
+                              "url": "rtsp://127.0.0.1:1/never-read"}, headers=A) as r:
+                check("on-demand camera added", r.status == 200, await r.text())
+            await asyncio.sleep(2)
+            async with s.get(f"{BASE}/api/state") as r:
+                solar = next((c for c in (await r.json())["cameras"] if c["id"] == "solar"), {})
+                check("on-demand camera counts as connected without being read", solar.get("connected") is True, str(solar))
+            async with s.post(f"{BASE}/api/admin/cameras", json={"id": "solar", "on_demand": "yes", "url": "rtsp://x/y"},
+                              headers=A) as r:
+                check("on_demand must be true or false", r.status == 400)
+            async with s.delete(f"{BASE}/api/admin/cameras/solar", headers=A) as r:
+                pass
             sys.path.insert(0, str(HERE.parent))
             from streams import resolve
             hd = resolve({"id": "porch", "url": "rtsp://x/y"}, 8554, "hub")["hls_variants"]
