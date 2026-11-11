@@ -29,6 +29,17 @@ enum Demo {
         }
     }
 
+    /// Today's visitors at the demo Front Door (and one at Garage), newest first
+    static func visitors(_ cam: HubCamera) -> [Visitor] {
+        let now = Date().timeIntervalSince1970
+        let ago: [(Double, Double)] = cam.id == "demo0" ? [(25, 42), (190, 18), (450, 64)]
+            : cam.id == "demo2" ? [(300, 30)] : []
+        return ago.map { minutes, length in
+            let start = now - minutes * 60
+            return Visitor(id: "\(cam.id)-\(Int(minutes))", start: start, end: start + length, thumbnail: nil)
+        }
+    }
+
     static func isDemo(_ cam: HubCamera) -> Bool { enabled && cam.id.hasPrefix("demo") }
 
     /// A plain 16:9 stand-in picture: a tinted room with the camera's name.
