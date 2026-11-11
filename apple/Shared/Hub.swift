@@ -59,6 +59,24 @@ struct Visitor: Codable, Identifiable, Equatable {
     var date: Date { Date(timeIntervalSince1970: start) }
 }
 
+/// A person event at a camera (from Frigate), with its snapshot and, once it's over, its clip.
+struct HubEvent: Codable, Identifiable, Equatable {
+    let id: String
+    let camera: String
+    let start: Double
+    let end: Double?
+    let thumbnail: String?
+    let clip: String?
+
+    var date: Date { Date(timeIntervalSince1970: start) }
+    var visitor: Visitor { Visitor(id: id, start: start, end: end, thumbnail: thumbnail) }
+}
+
+struct EventPage: Codable {
+    let events: [HubEvent]
+    let more: Bool
+}
+
 /// A one-time code from the hub for pairing another device (the iPhone asks for one for its watch).
 struct PairingCode: Codable {
     let secret: String
@@ -211,6 +229,20 @@ struct HubClient {
         let data = try await get("/api/watch/cameras/\(cam.id)/visitors",
                                  [URLQueryItem(name: "limit", value: String(limit))])
         return try JSONDecoder().decode(Reply.self, from: data).visitors
+    }
+
+    /// Person events newest first, across cameras or at one; `before` pages back (hub 0.7.8+).
+    func events(camera: String? = nil, before: Double? = nil, limit: Int = 30) async throws -> EventPage {
+        var query = [URLQueryItem(name: "limit", value: String(limit))]
+        if let camera { query.append(URLQueryItem(name: "camera", value: camera)) }
+        if let before { query.append(URLQueryItem(name: "before", value: String(format: "%.3f", before))) }
+        return try JSONDecoder().decode(EventPage.self, from: try await get("/api/watch/events", query))
+    }
+
+    /// A URL the player can open for an event's clip (carries a media token).
+    func clipURL(_ event: HubEvent) async throws -> URL? {
+        guard let clip = event.clip else { return nil }
+        return try await mediaURL(clip)
     }
 
     /// A one-time code for pairing another of this person's devices (their watch).

@@ -4,6 +4,8 @@ import SwiftUI
 /// then one row per camera leading to its own page.
 struct SettingsView: View {
     @ObservedObject var store: CameraStore
+    /// Shown as a sheet (Done closes it) or as a tab
+    var showsDone = true
     @ObservedObject private var prefs = Prefs.shared
     @Environment(\.dismiss) private var dismiss
     // -openCamera <id> at launch (screenshots / testing) opens that camera's page
@@ -59,8 +61,10 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                if showsDone {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
                 }
             }
         }

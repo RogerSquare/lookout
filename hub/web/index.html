@@ -83,6 +83,19 @@
           <div class="span2 row"><button class="primary" type="submit" id="fr-connect">Connect to Frigate</button><span id="fr-status" class="muted"></span></div>
         </form>
       </div>
+      <div class="panel" id="history-panel">
+        <h3>Event history and clips</h3>
+        <p class="muted" id="history-note"></p>
+        <form id="history-form" class="grid2">
+          <label class="span2">Frigate address
+            <input id="hi-url" placeholder="http://192.168.1.20:5000">
+            <small class="muted">The apps list past visitors and play their clips from Frigate's recordings. Alerts still come from this hub.</small>
+          </label>
+          <label>User <input id="hi-user" autocomplete="off" placeholder="optional"></label>
+          <label>Password <input id="hi-pass" type="password" autocomplete="off" placeholder="optional"></label>
+          <div class="span2 row"><button class="primary" type="submit">Save</button><button type="button" id="hi-off">Turn Off</button><span id="hi-status" class="muted"></span></div>
+        </form>
+      </div>
       <div class="panel" id="builtin-panel">
         <h3>This hub's detector</h3>
         <p id="det-summary"></p>

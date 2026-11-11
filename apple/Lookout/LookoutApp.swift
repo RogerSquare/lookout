@@ -35,7 +35,7 @@ struct RootView: View {
             if linkStore.link == nil && !Self.demo {
                 PairingView()
             } else {
-                PhoneHome()
+                PhoneTabs()
             }
         }
         .overlay {
@@ -76,10 +76,41 @@ struct RootView: View {
     }
 }
 
+/// Live, Events and Settings, on a floating tab bar (hidden while a layout fills the screen).
+struct PhoneTabs: View {
+    enum Page: Hashable { case live, events, settings }
+
+    @StateObject private var store = CameraStore()
+    @ObservedObject private var router = AlertRouter.shared
+    @Environment(\.scenePhase) private var phase
+    @State private var page: Page = ProcessInfo.processInfo.arguments.contains("-openEvents") ? .events : .live
+
+    var body: some View {
+        TabView(selection: $page) {
+            Tab("Live", systemImage: "video.fill", value: Page.live) {
+                PhoneHome(store: store, visible: page == .live)
+            }
+            Tab("Events", systemImage: "clock.fill", value: Page.events) {
+                EventsView(store: store)
+            }
+            Tab("Settings", systemImage: "gearshape.fill", value: Page.settings) {
+                SettingsView(store: store, showsDone: false)
+            }
+        }
+        // A person alert opens its camera on the Live tab
+        .onChange(of: router.requested) { _, id in if id != nil { page = .live } }
+        // Every tab needs the camera list, whichever one opens first
+        .onAppear { store.start() }
+        .onChange(of: phase) { _, p in if p == .active { store.start() } else { store.stop() } }
+    }
+}
+
 /// The cameras laid out the way the user picked (List, Grid or Focus), or a wall of every camera
 /// when the phone is turned sideways. Tap one for full screen.
 struct PhoneHome: View {
-    @StateObject private var store = CameraStore()
+    @ObservedObject var store: CameraStore
+    /// The Live tab is the one on screen (streams pause on the other tabs)
+    var visible = true
     @StateObject private var browser = HubBrowser()       // follows the hub on the home network
     @ObservedObject private var prefs = Prefs.shared
     @Environment(\.scenePhase) private var phase
@@ -112,7 +143,7 @@ struct PhoneHome: View {
     /// The cameras the home screen shows, in the user's order
     private var cameras: [HubCamera] { prefs.onPhone(store.cameras) }
     /// Streams run only while the app is in front and no camera is full screen
-    private var live: Bool { phase == .active && playerID == nil }
+    private var live: Bool { phase == .active && playerID == nil && visible }
     /// What the player swipes through: the home screen's cameras, or every camera when the one
     /// opened (from an alert) is hidden here
     private var playerCameras: [HubCamera] {
@@ -152,6 +183,7 @@ struct PhoneHome: View {
                 }
                 .navigationTitle("Lookout")
                 .toolbar(fullBleed ? .hidden : .visible, for: .navigationBar)
+                .toolbar(fullBleed ? .hidden : .visible, for: .tabBar)
                 .toolbar { toolbar }
             }
             .statusBarHidden(fullBleed)
@@ -302,10 +334,6 @@ struct PhoneHome: View {
                 Image(systemName: layout.symbol)
             }
             .accessibilityLabel("Layout")
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-            Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                .accessibilityLabel("Settings")
         }
     }
 }

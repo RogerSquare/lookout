@@ -138,6 +138,38 @@ class Frigate:
                 break
         return out
 
+    async def reviews(self, cameras, before=None, limit=50):
+        """Person alerts across cameras (Frigate names), newest first, ending before `before`
+        (unix seconds) when given: [{id, camera, detection, start, end}]."""
+        out, cursor = [], before
+        for _ in range(4):                      # a page can be all cars: look a little further
+            query = f"/api/review?cameras={','.join(cameras)}&severity={self.severity}&limit={limit * 2}"
+            if cursor is not None:
+                query += f"&before={cursor}"
+            items = await self.get_json(query)
+            for r in items:
+                data = r.get("data") or {}
+                if "person" not in (data.get("objects") or []):
+                    continue
+                dets = data.get("detections") or []
+                out.append({"id": r["id"], "camera": r["camera"], "detection": dets[0] if dets else None,
+                            "start": r.get("start_time"), "end": r.get("end_time")})
+                if len(out) >= limit:
+                    return out
+            if len(items) < limit * 2:
+                return out
+            cursor = min(r.get("start_time") or 0 for r in items)
+        return out
+
+    async def save_clip(self, camera, start, end, path):
+        """Frigate's recording of camera from start to end (unix seconds), written to path."""
+        body = await self.get_bytes(f"/api/{camera}/start/{start:.0f}/end/{end:.0f}/clip.mp4")
+        if len(body) < 1000:
+            raise FrigateError("no recording for that time")
+        tmp = path.with_suffix(".part")
+        tmp.write_bytes(body)
+        tmp.replace(path)
+
     # ---- live reviews --------------------------------------------------------------------------
 
     def start(self):

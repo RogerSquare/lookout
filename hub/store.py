@@ -168,6 +168,18 @@ class Store:
             self.data["source"] = cfg
             self._save()
 
+    def history(self):
+        """Frigate used for event history and clips while the hub detects itself (None = off)."""
+        return self.data.get("history")
+
+    def set_history(self, cfg):
+        with self.lock:
+            if cfg:
+                self.data["history"] = cfg
+            else:
+                self.data.pop("history", None)
+            self._save()
+
     def profile(self):
         return self.data.get("profile")
 

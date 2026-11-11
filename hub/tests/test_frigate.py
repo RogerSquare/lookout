@@ -31,6 +31,7 @@ class FakeFrigate:
     def __init__(self):
         self.sockets = set()
         self.logins = 0
+        self.clip_fetches = []
 
     def authed(self, request):
         return request.cookies.get("frigate_token") == "ok"
@@ -72,11 +73,23 @@ class FakeFrigate:
 
     @guard
     async def review(self, request):
-        return web.json_response([
+        items = [
+            {"id": "r3", "camera": "front_door", "start_time": 300, "end_time": None, "severity": "alert",
+             "data": {"objects": ["person"], "detections": ["d3"]}},
             {"id": "r2", "camera": "kitchen", "start_time": 200, "end_time": 210, "severity": "alert",
              "data": {"objects": ["person"], "detections": ["d2"]}},
             {"id": "r1", "camera": "kitchen", "start_time": 100, "end_time": 110, "severity": "alert",
-             "data": {"objects": ["car"], "detections": ["d1"]}}])
+             "data": {"objects": ["car"], "detections": ["d1"]}}]
+        cams = request.query.get("cameras", "").split(",")
+        before = float(request.query["before"]) if "before" in request.query else None
+        return web.json_response([r for r in items if r["camera"] in cams
+                                  and (before is None or r["start_time"] < before)])
+
+    @guard
+    async def clip(self, request):
+        m = request.match_info
+        self.clip_fetches.append((m["camera"], m["start"], m["end"]))
+        return web.Response(body=b"CLIP" + bytes(5000), content_type="video/mp4")
 
     @guard
     async def ws(self, request):
@@ -109,6 +122,7 @@ class FakeFrigate:
         app.router.add_get("/api/stats", self.stats)
         app.router.add_get("/api/events/{id}/snapshot.jpg", self.snapshot)
         app.router.add_get("/api/review", self.review)
+        app.router.add_get("/api/{camera}/start/{start}/end/{end}/clip.mp4", self.clip)
         app.router.add_get("/ws", self.ws)
         self.runner = web.AppRunner(app)
         await self.runner.setup()
@@ -271,6 +285,32 @@ async def main():
                 v = (await r.json())["visitors"]
                 check("recent visitors: person alerts only, with thumbnails",
                       [x["id"] for x in v] == ["r2"] and v[0]["thumbnail"] == "/api/watch/visitors/d2.jpg", json.dumps(v))
+            async with s.get(f"{BASE}/api/watch/events") as r:
+                check("events need the app token", r.status == 401)
+            async with s.get(f"{BASE}/api/watch/events?token={app_token}") as r:
+                evs = (await r.json())["events"]
+                check("events: person alerts across cameras, newest first, hub camera ids",
+                      [(e["id"], e["camera"]) for e in evs] == [("r3", "front_door"), ("r2", "kitchen")], json.dumps(evs))
+                check("finished event has a clip, ongoing one doesn't",
+                      evs[1]["clip"] == "/api/watch/cameras/kitchen/clip.mp4?start=200.000&end=210.000"
+                      and evs[0]["clip"] is None and evs[1]["thumbnail"] == "/api/watch/visitors/d2.jpg")
+            async with s.get(f"{BASE}/api/watch/events?camera=kitchen&token={app_token}") as r:
+                check("events filtered by camera", [e["id"] for e in (await r.json())["events"]] == ["r2"])
+            async with s.get(f"{BASE}/api/watch/events?before=250&token={app_token}") as r:
+                check("events page back with ?before", [e["id"] for e in (await r.json())["events"]] == ["r2"])
+            async with s.get(f"{BASE}/api/watch/events?camera=nope&token={app_token}") as r:
+                check("events for an unknown camera: 404", r.status == 404)
+            clip = f"{BASE}/api/watch/cameras/kitchen/clip.mp4?start=200&end=210&token={app_token}"
+            async with s.get(clip, headers={"Range": "bytes=0-3"}) as r:
+                body = await r.read()
+                check("clip fetched from Frigate (with 2 s either side) and served in ranges",
+                      r.status == 206 and body == b"CLIP" and fake.clip_fetches == [("kitchen", "198", "212")],
+                      f"{r.status} {body[:8]!r} {fake.clip_fetches}")
+            async with s.get(clip) as r:
+                check("clip cached: whole file, no second fetch",
+                      r.status == 200 and len(await r.read()) == 5004 and len(fake.clip_fetches) == 1)
+            async with s.get(f"{BASE}/api/watch/cameras/kitchen/clip.mp4?start=200&end={time.time() + 60:.0f}&token={app_token}") as r:
+                check("clip of an unfinished event refused", r.status == 400)
             async with s.get(f"{BASE}/api/watch/visitors/d2.jpg?token={app_token}") as r:
                 check("visitor thumbnail proxied from Frigate", (await r.read()).startswith(SNAP))
             async with s.get(f"{BASE}/api/admin/source", headers=A) as r:
@@ -286,6 +326,27 @@ async def main():
             check("hub detects people itself again",
                   await ev.wait(lambda e: is_("person_detected", "kitchen")(e) and e.get("source") is None, 40, t) is not None)
             check("and stops following Frigate", not fake.sockets or await asyncio.sleep(1) or not fake.sockets)
+
+            # History only: the hub detects, Frigate supplies past events and clips
+            async with s.get(f"{BASE}/api/watch/events?token={app_token}") as r:
+                check("no history without Frigate", (await r.json())["events"] == [])
+            async with s.put(f"{BASE}/api/admin/history", headers=A,
+                             json={"url": fake.url, "user": "lookout", "password": "nope"}) as r:
+                check("history: wrong Frigate password refused (400)", r.status == 400)
+            async with s.put(f"{BASE}/api/admin/history", headers=A,
+                             json={"url": fake.url, "user": "lookout", "password": "pw"}) as r:
+                check("history from Frigate turned on", r.status == 200)
+            async with s.get(f"{BASE}/api/admin/history", headers=A) as r:
+                h = await r.json()
+                check("history settings shown, password masked", h["enabled"] and h["connected"] and h["password"] == "***")
+            async with s.get(f"{BASE}/api/watch/events?camera=kitchen&token={app_token}") as r:
+                check("events from Frigate while the hub detects", [e["id"] for e in (await r.json())["events"]] == ["r2"])
+            check("history doesn't follow Frigate's live reviews", not fake.sockets)
+            check("history setting saved", json.loads((data / "settings.json").read_text())["history"]["password"] == "pw")
+            async with s.put(f"{BASE}/api/admin/history", headers=A, json={}) as r:
+                check("history turned off", r.status == 200)
+            async with s.get(f"{BASE}/api/watch/events?token={app_token}") as r:
+                check("no events once it's off", (await r.json())["events"] == [])
             ev.task.cancel()
     finally:
         proc.terminate()

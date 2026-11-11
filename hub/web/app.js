@@ -121,9 +121,9 @@ function route() {
 addEventListener("hashchange", () => { if ($("#cam-sheet").open) $("#cam-sheet").close(); route(); });
 
 async function refresh() {
-  const [config, st, det, src] = await Promise.all([api("/api/admin/config"), api("/api/state"),
-    api("/api/admin/detector"), api("/api/admin/source")]);
-  state.config = config; state.detector = det; state.source = src; state.alerts = st.alerts;
+  const [config, st, det, src, hist] = await Promise.all([api("/api/admin/config"), api("/api/state"),
+    api("/api/admin/detector"), api("/api/admin/source"), api("/api/admin/history")]);
+  state.config = config; state.detector = det; state.source = src; state.alerts = st.alerts; state.history = hist;
   state.cams = Object.fromEntries(st.cameras.map(c => [c.id, c]));
   renderAll();
 }
@@ -410,6 +410,7 @@ function renderDetection() {
     : "This hub looks for people itself.";
   if (frigate) { $("#fr-url").value = src.url || ""; $("#fr-user").value = src.user || "";
                  $("#fr-pass").value = src.password || ""; $("#fr-sev").value = src.severity || "alert"; }
+  renderHistory(frigate);
   if (frigate) return;
   const ch = det.choice || {};
   $("#det-summary").innerHTML = "";
@@ -449,6 +450,29 @@ $("#bench-btn").onclick = async () => {
   try { await api("/api/admin/detector/benchmark", { method: "POST" }); await refresh(); $("#bench-note").textContent = "Done."; }
   catch (x) { $("#bench-note").textContent = x.message; }
   b.disabled = false;
+};
+
+function renderHistory(frigate) {
+  const h = state.history || {};
+  $("#history-panel").hidden = frigate;          // Frigate as the source gives history already
+  $("#history-note").textContent = !h.enabled ? "Off. Connect Frigate to see past visitors and their clips in the apps."
+    : h.connected ? `From Frigate ${h.version}.` : "Waiting for Frigate to answer…";
+  if (document.activeElement?.closest?.("#history-form")) return;
+  $("#hi-url").value = h.url || ""; $("#hi-user").value = h.user || ""; $("#hi-pass").value = h.password || "";
+  $("#hi-off").hidden = !h.enabled;
+}
+$("#history-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const st = $("#hi-status"); st.textContent = "Connecting…";
+  const body = { url: $("#hi-url").value.trim() };
+  if ($("#hi-user").value) body.user = $("#hi-user").value;
+  if ($("#hi-pass").value) body.password = $("#hi-pass").value;
+  try { await api("/api/admin/history", { method: "PUT", body }); st.textContent = ""; toast("Event history connected"); await refresh(); }
+  catch (x) { st.textContent = x.message; }
+});
+$("#hi-off").onclick = async () => {
+  try { await api("/api/admin/history", { method: "PUT", body: {} }); toast("Event history off"); await refresh(); }
+  catch (x) { toast(x.message); }
 };
 
 async function pickSource(v) {
