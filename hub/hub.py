@@ -1163,6 +1163,50 @@ class Hub:
             raise web.HTTPBadGateway(text=str(e))
         return web.json_response({"presets": presets, "position": None})
 
+    # ---- person events reported by the camera itself (e.g. Wyze's own detection) -----------
+
+    EVENTS_EVERY = float(os.environ.get("LOOKOUT_EVENTS_EVERY", 30))
+
+    async def _camera_events_loop(self):
+        """Cameras with an `events_url` (a service that lists the person events the camera
+        detected itself, like the solar Parking Cam's): each new one becomes a Lookout alert with
+        its snapshot. The alert clears once nobody is reported for hide_after_seconds."""
+        since = {}                   # camera id -> newest event time handled (ms)
+        while True:
+            for cam in list(self.cameras.values()):
+                url = cam.cfg.get("events_url")
+                if not url:
+                    continue
+                start = since.setdefault(cam.id, int(cam.started_at * 1000))   # nothing from before it was added
+                try:
+                    async with self.http.get(url, params={"since": str(start)},
+                                             timeout=aiohttp.ClientTimeout(total=20)) as r:
+                        body = await r.json(content_type=None)
+                except Exception as e:
+                    log.info("%s: camera events: %s", cam.id, e)
+                    continue
+                for ev in (body or {}).get("events") or []:
+                    since[cam.id] = max(since[cam.id], int(ev.get("ts") or 0))
+                    snap = None
+                    if ev.get("image"):
+                        try:
+                            async with self.http.get(ev["image"], timeout=aiohttp.ClientTimeout(total=15)) as r:
+                                snap = await r.read() if r.status == 200 else None
+                        except Exception:
+                            snap = None
+                    if not self.camera_alerts(cam.id):
+                        continue
+                    cam.last_person_time = time.time()
+                    if not cam.person:
+                        cam.raise_from(snap, source="camera")
+                    elif snap:
+                        cam.snapshot = snap
+            for cam in list(self.cameras.values()):
+                if (cam.cfg.get("events_url") and cam.person
+                        and time.time() - cam.last_person_time > max(self.settings["hide_after_seconds"], self.EVENTS_EVERY * 2)):
+                    cam._raise_gone(reason="camera")
+            await asyncio.sleep(self.EVENTS_EVERY)
+
     # ---- found cameras ----------------------------------------------------------------
 
     def _known(self, fcam, cams):
@@ -2164,6 +2208,7 @@ class Hub:
         asyncio.ensure_future(self._found_loop())
         asyncio.ensure_future(self._bridge_loop())
         asyncio.ensure_future(self._schedule_loop())
+        asyncio.ensure_future(self._camera_events_loop())
         if self.history_cfg:
             async def connect_history():
                 while self._history is None and self.history_cfg:

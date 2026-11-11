@@ -33,7 +33,7 @@ def check(name, ok, detail=""):
 def start_hub(data, legacy=None):
     env = {**os.environ, "LOOKOUT_HTTPS_PORT": "18866", "LOOKOUT_BONJOUR": "0", "LOOKOUT_DATA": str(data), "LOOKOUT_CONFIG": str(legacy or data / "none.json"),
            "LOOKOUT_PORT": str(PORT), "LOOKOUT_RTSP_PORT": str(RTSP), "LOOKOUT_GO2RTC_API_PORT": str(API),
-           "LOOKOUT_VERSION": "test"}
+           "LOOKOUT_VERSION": "test", "LOOKOUT_EVENTS_EVERY": "1"}
     return subprocess.Popen([sys.executable, str(HERE.parent / "hub.py")], env=env)
 
 
@@ -124,9 +124,35 @@ async def fresh_install():
             yaml = (data / "go2rtc.yaml").read_text()
             check("go2rtc config generated with the camera's restreams",
                   all(f"  porch{sfx}:" in yaml for sfx in ("", "_watch", "_phone")) and "porch_sd" not in yaml)
+            # A fake "camera's own detections" service: one person event, posted after the hub starts
+            from aiohttp import web as _web
+            ev_state = {"events": []}
+
+            async def _events(request):
+                since = int(request.query.get("since", 0))
+                return _web.json_response({"events": [e for e in ev_state["events"] if e["ts"] > since]})
+
+            async def _image(request):
+                return _web.Response(body=b"\xff\xd8WYZE-SNAPSHOT\xff\xd9", content_type="image/jpeg")
+            ev_app = _web.Application()
+            ev_app.router.add_get("/events", _events)
+            ev_app.router.add_get("/img.jpg", _image)
+            ev_runner = _web.AppRunner(ev_app)
+            await ev_runner.setup()
+            await _web.TCPSite(ev_runner, "127.0.0.1", 18999).start()
             async with s.post(f"{BASE}/api/admin/cameras", json={"id": "solar", "name": "Solar", "on_demand": True,
-                              "url": "rtsp://127.0.0.1:1/never-read"}, headers=A) as r:
+                              "url": "rtsp://127.0.0.1:1/never-read", "events_url": "http://127.0.0.1:18999/events"},
+                              headers=A) as r:
                 check("on-demand camera added", r.status == 200, await r.text())
+            ev_state["events"].append({"id": "e1", "ts": int(time.time() * 1000) + 500,
+                                       "image": "http://127.0.0.1:18999/img.jpg"})
+            det = await next_event(events, lambda e: e["type"] == "person_detected" and e["camera"] == "solar", 10)
+            check("the camera's own person event becomes a Lookout alert", det is not None and det.get("source") == "camera")
+            async with s.get(f"{BASE}/api/cameras/solar/snapshot.jpg") as r:
+                check("with the camera's snapshot", (await r.read()).startswith(b"\xff\xd8WYZE"))
+            gone = await next_event(events, lambda e: e["type"] == "person_gone" and e["camera"] == "solar", 25)
+            check("and clears when no new event comes", gone is not None)
+            await ev_runner.cleanup()
             await asyncio.sleep(2)
             async with s.get(f"{BASE}/api/state") as r:
                 solar = next((c for c in (await r.json())["cameras"] if c["id"] == "solar"), {})
