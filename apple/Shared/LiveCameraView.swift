@@ -19,7 +19,14 @@ enum LiveTransport: Equatable {
 /// and restarts a dead stream. MJPEG: every frame replaces the still; reconnects on drop.
 @MainActor
 final class LiveModel: ObservableObject {
-    @Published var still: UIImage?
+    @Published var still: UIImage? {
+        didSet { if let still, let cameraID { Self.lastFrames[cameraID] = still } }
+    }
+    /// The newest picture of each camera, from any view showing it: a camera that appears
+    /// somewhere else (a Duo folding, the full-screen player opening) starts with it instead of a
+    /// spinner. Small: one image per camera.
+    private static var lastFrames: [String: UIImage] = [:]
+    private var cameraID: String?
     @Published var player: AVPlayer?
     @Published var playing = false
     @Published var video = false   // the picture is actually moving: show the player, not the still
@@ -63,6 +70,8 @@ final class LiveModel: ObservableObject {
     #endif
 
     func run(_ cam: HubCamera, client: HubClient, width: Int, transport: LiveTransport) async {
+        cameraID = cam.id
+        if still == nil, let last = Self.lastFrames[cam.id] { still = last }
         #if DEBUG && os(iOS)
         if Demo.isDemo(cam) {
             still = Demo.image(cam)
