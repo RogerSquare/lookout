@@ -23,7 +23,7 @@ EDITABLE = {
 }
 CAMERA_FIELDS = {
     "id", "name", "role", "url", "sub_url", "detect_url", "streams", "hls_src", "hls_variants",
-    "min_person_height", "zone", "loop", "enabled", "ptz", "frigate", "bridge", "on_demand", "events_url",
+    "min_person_height", "zone", "loop", "enabled", "ptz", "frigate", "bridge", "on_demand", "events_url", "thumbnail_url",
 }
 ROLES = ("door", "other")
 _ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
@@ -71,6 +71,8 @@ def validate_camera(cam):
             for p in zone)
         if not ok:
             raise ConfigError("zone must be 3+ [x, y] points, each a 0-1 fraction of the frame")
+    if "thumbnail_url" in cam and not (isinstance(cam["thumbnail_url"], str) and cam["thumbnail_url"].startswith(("http://", "https://"))):
+        raise ConfigError("thumbnail_url must be an http(s) address")
     if "events_url" in cam and not (isinstance(cam["events_url"], str) and cam["events_url"].startswith(("http://", "https://"))):
         raise ConfigError("events_url must be an http(s) address")
     if "on_demand" in cam and not isinstance(cam["on_demand"], bool):

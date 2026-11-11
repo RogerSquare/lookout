@@ -23,7 +23,7 @@ xcodebuild -project Lookout.xcodeproj -scheme Lookout -configuration Release -de
 PROFILES=~/Library/Developer/Xcode/UserData/Provisioning\ Profiles
 mkdir -p "$PROFILES"
 PLIST_PROFILES=""
-for id in dev.rogersquare.lookout dev.rogersquare.lookout.widgets dev.rogersquare.lookout.watchkitapp dev.rogersquare.lookout.watchkitapp.widget; do
+for id in dev.rogersquare.lookout dev.rogersquare.lookout.widgets dev.rogersquare.lookout.notify dev.rogersquare.lookout.watchkitapp dev.rogersquare.lookout.watchkitapp.widget; do
   f=~/.lookout-signing/profiles/$id.appstore.mobileprovision
   uuid=$(security cms -D -i "$f" | plutil -extract UUID raw -o - -)
   cp "$f" "$PROFILES/$uuid.mobileprovision"
