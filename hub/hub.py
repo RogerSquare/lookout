@@ -393,6 +393,15 @@ class Camera:
                                      "duration": duration})
 
 
+def _scale_jpeg(data, width):
+    img = Image.open(io.BytesIO(data))
+    if width < img.width:
+        img = img.convert("RGB").resize((width, max(2, round(img.height * width / img.width))), Image.LANCZOS)
+    out = io.BytesIO()
+    img.save(out, "JPEG", quality=80)
+    return out.getvalue()
+
+
 def _jpeg(frame, quality=85, width=None):
     if width and width < frame.width:
         frame = frame.reformat(width=width, height=max(2, round(frame.height * width / frame.width)))
@@ -497,6 +506,12 @@ class Push:
 
     def register_activity_start(self, token, topic, env, device_id):
         self.activities["start"][device_id or token] = {"token": token, "topic": topic, "env": env}
+        self._save_activities()
+
+    def forget_activity_start(self, token, device_id):
+        starts = self.activities["start"]
+        for key in [k for k, d in starts.items() if k == device_id or d.get("token") == token]:
+            starts.pop(key, None)
         self._save_activities()
 
     def register_activity(self, cam_id, token, topic, env):
@@ -652,6 +667,8 @@ class Push:
                               "subtitle": cam_name,
                               "body": "Test alert" if test else "Tap to see who it is"},
                     "sound": "default", "thread-id": cam_id, "category": "LOOKOUT_PERSON",
+                    # Lets the iPhone's notification extension attach the detection snapshot
+                    "mutable-content": 1,
                     # Doorbell-style: shown through Focus modes and notification summaries
                     "interruption-level": "time-sensitive", "relevance-score": 1.0},
             "camera": cam_id,
@@ -690,6 +707,7 @@ class Hub:
         self.auth = Auth(store) if store else None
         self.pairing = Pairing(store, DATA_DIR) if store else None
         self._clip_locks = {}     # clip file name -> lock, so one fetch per clip
+        self._thumbs = {}         # on-demand camera id -> (fetched at, JPEG)
         self.zeroconf = None
         self.state_file = DATA_DIR / "state.json"
         self.alerts = self._load_alerts()
@@ -2066,12 +2084,14 @@ class Hub:
         token = str(body.get("token", "")).lower()
         topic, env = body.get("topic", ""), body.get("env", "production")
         if (not re.fullmatch(r"[0-9a-f]{32,400}", token) or topic != "dev.rogersquare.lookout"
-                or env not in Push.HOSTS or body.get("kind") not in ("start", "update")):
+                or env not in Push.HOSTS or body.get("kind") not in ("start", "update", "stop")):
             raise web.HTTPBadRequest(text="bad token, kind, topic or env")
         if self.push is None:
             raise web.HTTPServiceUnavailable(text="push not configured on this hub")
         dev = request.get("device")
-        if body["kind"] == "start":
+        if body["kind"] == "stop":           # the user turned the Live Activity off
+            self.push.forget_activity_start(token, dev["id"] if dev else None)
+        elif body["kind"] == "start":
             self.push.register_activity_start(token, topic, env, dev["id"] if dev else None)
         else:
             if body.get("camera") not in self.cameras:
@@ -2087,8 +2107,18 @@ class Hub:
         cam = self._camera(request)
         frame = cam.latest
         if frame is None and cam.on_demand:
-            # Nothing is read from it until someone watches; don't wake it for a still
-            raise web.HTTPServiceUnavailable(text="on-demand camera: open it to see it")
+            # Nothing is read from it until someone watches; its still comes from elsewhere
+            # (thumbnail_url: the newest picture its service has), never by waking it
+            body = await self._thumbnail(cam)
+            if body is None:
+                raise web.HTTPServiceUnavailable(text="on-demand camera: open it to see it")
+            try:
+                width = max(64, min(int(request.query.get("w", 0)), 1920)) if "w" in request.query else None
+            except ValueError:
+                raise web.HTTPBadRequest(text="w must be a number of pixels")
+            if width:
+                body = await asyncio.get_running_loop().run_in_executor(None, _scale_jpeg, body, width)
+            return web.Response(body=body, content_type="image/jpeg", headers={"Cache-Control": "no-store"})
         if frame is None:
             raise web.HTTPServiceUnavailable(text="no frame yet")
         try:
@@ -2097,6 +2127,24 @@ class Hub:
             raise web.HTTPBadRequest(text="w must be a number of pixels")
         body = await asyncio.get_running_loop().run_in_executor(None, lambda: _jpeg(frame, 80, width))
         return web.Response(body=body, content_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    THUMB_FOR = 30          # seconds an on-demand camera's thumbnail is reused
+
+    async def _thumbnail(self, cam):
+        url = cam.cfg.get("thumbnail_url")
+        if not url:
+            return None
+        cached = self._thumbs.get(cam.id)
+        if cached and time.time() - cached[0] < self.THUMB_FOR:
+            return cached[1]
+        try:
+            async with self.http.get(url, timeout=aiohttp.ClientTimeout(total=20)) as r:
+                body = await r.read() if r.status == 200 else None
+        except Exception:
+            body = None
+        if body:
+            self._thumbs[cam.id] = (time.time(), body)
+        return body or (cached[1] if cached else None)
 
     async def watch_snapshot(self, request):
         """The frame that raised the latest alert (what the person-alert notification shows),

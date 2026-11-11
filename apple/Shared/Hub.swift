@@ -193,6 +193,9 @@ struct HubClient {
                 return data
             } catch HubError.unauthorized {
                 throw HubError.unauthorized          // the hub answered and refused: don't try elsewhere
+            } catch HubError.status(let code) {
+                if way != HubRoute.current { HubRoute.current = way }
+                throw HubError.status(code)          // the hub answered (e.g. no picture yet): same elsewhere
             } catch {
                 lastError = error
             }

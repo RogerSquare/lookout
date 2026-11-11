@@ -39,14 +39,16 @@ struct CameraTile: View {
     var edgeInsets = EdgeInsets()
 
     @ObservedObject private var sleep = SleepState.shared
+    /// An on-demand camera's newest picture from the hub (it isn't woken for this)
+    @State private var thumbnail: UIImage?
 
     var body: some View {
         ZStack {
             if camera.isOnDemand {
                 // Not streamed in a tile: that would keep a solar camera awake. Tap to open it.
                 ZStack {
-                    if let last = LiveModel.lastFrame(camera.id) {
-                        Image(uiImage: last).resizable().aspectRatio(contentMode: fill ? .fill : .fit).opacity(0.6)
+                    if let last = LiveModel.lastFrame(camera.id) ?? thumbnail {
+                        Image(uiImage: last).resizable().aspectRatio(contentMode: fill ? .fill : .fit).opacity(0.7)
                     } else {
                         Color.black
                     }
@@ -120,6 +122,15 @@ struct CameraTile: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .contentShape(Rectangle())
+        .task(id: camera.isOnDemand && live ? camera.id : "") {
+            guard camera.isOnDemand, live else { return }
+            while !Task.isCancelled {
+                if let data = try? await client.frame(camera, width: frameWidth), let img = UIImage(data: data) {
+                    thumbnail = img
+                }
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+            }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Self.label(camera))
         .accessibilityAddTraits(.isButton)

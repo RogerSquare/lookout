@@ -343,6 +343,17 @@ async def push_checks(s, pushes, data_dir):
     await asyncio.sleep(0.6)
     starts = [p for p in pushes if p["token"] == start_tok and p["body"]["aps"].get("event") == "start"]
     check("live activity: one at a time (no pile-up while it's showing)", len(starts) == 1, str(len(starts)))
+    check("person alerts let the iPhone attach the snapshot (mutable-content)",
+          any(p["body"].get("aps", {}).get("mutable-content") == 1 for p in pushes if "alert" in p["body"].get("aps", {})))
+    async with s.post(f"{BASE}/api/watch/activity-token", headers=auth,
+                      json={"kind": "stop", "token": start_tok, "topic": "dev.rogersquare.lookout", "env": "production"}) as r:
+        check("live activity: turned off from the app", r.status == 200)
+    await asyncio.sleep(16)
+    pushes.clear()
+    async with s.post(f"{BASE}/api/test", json={"camera": "photo", "seconds": 1}) as r:
+        pass
+    await asyncio.sleep(1)
+    check("live activity: none started once it's off", not any(p["token"] == start_tok for p in pushes))
 
 
 async def watch_checks(s, go2rtc_requests):

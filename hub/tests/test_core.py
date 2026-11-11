@@ -137,17 +137,36 @@ async def fresh_install():
             ev_app = _web.Application()
             ev_app.router.add_get("/events", _events)
             ev_app.router.add_get("/img.jpg", _image)
+
+            async def _thumb(request):
+                from PIL import Image as _I
+                import io as _io
+                buf = _io.BytesIO()
+                _I.new("RGB", (640, 360), (40, 90, 40)).save(buf, "JPEG")
+                return _web.Response(body=buf.getvalue(), content_type="image/jpeg")
+            ev_app.router.add_get("/thumb.jpg", _thumb)
             ev_runner = _web.AppRunner(ev_app)
             await ev_runner.setup()
             await _web.TCPSite(ev_runner, "127.0.0.1", 18999).start()
             async with s.post(f"{BASE}/api/admin/cameras", json={"id": "solar", "name": "Solar", "on_demand": True,
-                              "url": "rtsp://127.0.0.1:1/never-read", "events_url": "http://127.0.0.1:18999/events"},
+                              "url": "rtsp://127.0.0.1:1/never-read", "events_url": "http://127.0.0.1:18999/events",
+                              "thumbnail_url": "http://127.0.0.1:18999/thumb.jpg"},
                               headers=A) as r:
                 check("on-demand camera added", r.status == 200, await r.text())
             ev_state["events"].append({"id": "e1", "ts": int(time.time() * 1000) + 500,
                                        "image": "http://127.0.0.1:18999/img.jpg"})
             det = await next_event(events, lambda e: e["type"] == "person_detected" and e["camera"] == "solar", 10)
             check("the camera's own person event becomes a Lookout alert", det is not None and det.get("source") == "camera")
+            st = json.loads((data / "settings.json").read_text())
+            app = {"Authorization": "Bearer " + st.get("app_token", "")} if st.get("app_token") else None
+            if app:
+                async with s.put(f"{BASE}/api/admin/settings", json={"allow_legacy_token": True}, headers=A) as r:
+                    pass
+                async with s.get(f"{BASE}/api/watch/cameras/solar/frame.jpg?w=320", headers=app) as r:
+                    from PIL import Image as _I2
+                    import io as _io2
+                    size = _I2.open(_io2.BytesIO(await r.read())).size if r.status == 200 else None
+                    check("on-demand camera's still comes from its thumbnail, scaled", size == (320, 180), str((r.status, size)))
             async with s.get(f"{BASE}/api/cameras/solar/snapshot.jpg") as r:
                 check("with the camera's snapshot", (await r.read()).startswith(b"\xff\xd8WYZE"))
             gone = await next_event(events, lambda e: e["type"] == "person_gone" and e["camera"] == "solar", 25)

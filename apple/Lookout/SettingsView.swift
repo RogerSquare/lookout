@@ -4,6 +4,7 @@ import SwiftUI
 /// then one row per camera leading to its own page.
 struct SettingsView: View {
     @ObservedObject var store: CameraStore
+    @AppStorage(LiveActivities.enabledKey) private var liveActivity = false
     /// Shown as a sheet (Done closes it) or as a tab
     var showsDone = true
     @ObservedObject private var prefs = Prefs.shared
@@ -26,8 +27,11 @@ struct SettingsView: View {
                     Toggle(isOn: Binding(get: { store.alerts.enabled }, set: { store.setAlerts($0) })) {
                         Label { Text("Person Alerts") } icon: { SettingsIcon("bell.badge.fill", .red) }
                     }
+                    Toggle(isOn: Binding(get: { liveActivity }, set: { liveActivity = $0; LiveActivities.setEnabled($0) })) {
+                        Label { Text("Live Activity at the Door") } icon: { SettingsIcon("figure.stand", .green) }
+                    }
                 } footer: {
-                    Text("Pops up the camera when someone is at the door. Shared with Lookout on your PC and projector.")
+                    Text("Pops up the camera when someone is at the door. Shared with Lookout on your PC and projector. The Live Activity shows a person in the Dynamic Island while someone is at a door camera.")
                 }
 
                 Section {
