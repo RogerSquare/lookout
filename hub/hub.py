@@ -441,6 +441,7 @@ class Push:
         # activities running per camera. Kept next to devices.json.
         self.activity_path = path.with_name("activities.json")
         self.activities = self._load_activities()
+        self._activity_shown = {}    # camera -> when its Live Activity was started (one at a time)
 
     def _load(self):
         try:
@@ -528,31 +529,54 @@ class Push:
                 "timestamp": now, "event": "update", "content-state": state, "stale-date": now + self.ACTIVITY_STALE}})
         if running:
             return
+        # One at a time: don't start another while this camera's last one may still be showing
+        shown = self._activity_shown.get(cam_id)
+        if shown and time.time() - shown < self.ACTIVITY_STALE:
+            return
         for key, dev in list(self.activities["start"].items()):
             code = await self._activity_push(dev["token"], dev, {"aps": {
                 "timestamp": now, "event": "start", "content-state": state,
                 "attributes-type": "PersonActivityAttributes",
                 "attributes": {"cameraID": cam_id, "name": cam_name},
                 "stale-date": now + self.ACTIVITY_STALE,
+                # The person alert already made a sound; this just shows the glyph
                 "alert": {"title": "Someone's at the door", "body": cam_name}}})
             if code == 410:
                 self.activities["start"].pop(key, None)
                 self._save_activities()
             elif code == 200:
+                self._activity_shown[cam_id] = time.time()
                 log.info("push: started the live activity for %s", cam_id)
 
     async def end_activity(self, cam_id, since=None):
-        """They left: end the camera's Live Activities (gone from the Lock Screen after 2 min)."""
-        running = self.activities["running"].pop(cam_id, None)
-        if not running:
+        """They left: end the camera's Live Activity at once. Through its update token when the
+        app reported one, and always with a silent push that wakes the app to end it itself (the
+        app usually isn't running to report the token)."""
+        if self._activity_shown.pop(cam_id, None) is None and not self.activities["running"].get(cam_id):
             return
-        self._save_activities()
         now = int(time.time())
+        running = self.activities["running"].pop(cam_id, None) or {}
+        if running:
+            self._save_activities()
         for token, dev in running.items():
             await self._activity_push(token, dev, {"aps": {
                 "timestamp": now, "event": "end",
                 "content-state": {"person": False, "since": int(since or dev.get("since") or now), "gone": now},
-                "dismissal-date": now + 120}})
+                "dismissal-date": now}})
+        await self._wake_apps({"aps": {"content-available": 1}, "activity_gone": cam_id})
+
+    async def _wake_apps(self, payload):
+        """A silent background push to the iPhone apps (they do something small and go back)."""
+        for token, dev in list(self.devices.items()):
+            if self._kind(dev["topic"]) != "phone":
+                continue
+            host = self.cfg.get("url") or self.HOSTS.get(dev["env"], self.HOSTS["production"])
+            try:
+                await self._http().post(f"{host}/3/device/{token}", json=payload, headers={
+                    "authorization": f"bearer {self._token()}", "apns-topic": dev["topic"],
+                    "apns-push-type": "background", "apns-priority": "5"})
+            except Exception as e:
+                log.info("push: silent %s... failed: %s", token[:8], e)
 
     def _token(self):
         import jwt  # PyJWT (ES256 needs cryptography)

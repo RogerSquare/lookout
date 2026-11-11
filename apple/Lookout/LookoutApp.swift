@@ -118,6 +118,8 @@ struct PhoneTabs: View {
         .onChange(of: router.requested) { _, id in if id != nil { page = .live } }
         // Every tab needs the camera list, whichever one opens first
         .onAppear { store.start() }
+        // Live Activities follow the cameras: none left over once they've gone
+        .onChange(of: store.cameras) { _, cams in Task { await LiveActivities.reconcile(cams) } }
         .onChange(of: phase) { _, p in if p == .active { store.start() } else { store.stop() } }
     }
 }

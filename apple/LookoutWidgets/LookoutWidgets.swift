@@ -200,58 +200,40 @@ struct CamerasWidgetView: View {
 
 // MARK: - Live Activity: someone at the door
 
+/// Only while someone is in view of a door camera, and as quiet as possible: a person glyph in
+/// the Dynamic Island, the camera's name when it's opened or on the Lock Screen. No timer; it
+/// goes away as soon as they leave.
 struct PersonLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: PersonActivityAttributes.self) { context in
             // Lock Screen
-            HStack(spacing: 14) {
-                Image(systemName: context.state.person ? "figure.stand" : "figure.walk.departure")
-                    .font(.title)
-                    .foregroundStyle(context.state.person ? Color.green : Color.secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(context.state.person ? "Someone's at the door" : "They left")
-                        .font(.headline)
-                    Text(context.attributes.name).font(.subheadline).foregroundStyle(.secondary)
-                }
+            HStack(spacing: 12) {
+                Image(systemName: "figure.stand")
+                    .font(.title2)
+                    .foregroundStyle(.green)
+                Text(context.attributes.name).font(.headline)
                 Spacer()
-                timeLabel(context.state).font(.subheadline.monospacedDigit())
             }
-            .padding()
-            .activityBackgroundTint(.black.opacity(0.6))
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .activityBackgroundTint(.black.opacity(0.55))
             .widgetURL(URL(string: "lookout://camera/\(context.attributes.cameraID)"))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: "figure.stand").font(.title2)
-                        .foregroundStyle(context.state.person ? Color.green : Color.secondary)
+                    Image(systemName: "figure.stand").font(.title2).foregroundStyle(.green)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    VStack(spacing: 2) {
-                        Text(context.state.person ? "Someone's at the door" : "They left").font(.headline)
-                        Text(context.attributes.name).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    timeLabel(context.state).font(.caption.monospacedDigit())
+                    Text(context.attributes.name).font(.headline)
                 }
             } compactLeading: {
-                Image(systemName: "figure.stand")
-                    .foregroundStyle(context.state.person ? Color.green : Color.secondary)
+                Image(systemName: "figure.stand").foregroundStyle(.green)
             } compactTrailing: {
-                timeLabel(context.state).font(.caption2.monospacedDigit()).frame(maxWidth: 44)
+                EmptyView()
             } minimal: {
-                Image(systemName: "figure.stand")
-                    .foregroundStyle(context.state.person ? Color.green : Color.secondary)
+                Image(systemName: "figure.stand").foregroundStyle(.green)
             }
             .widgetURL(URL(string: "lookout://camera/\(context.attributes.cameraID)"))
-        }
-    }
-
-    @ViewBuilder private func timeLabel(_ state: PersonActivityAttributes.ContentState) -> some View {
-        if state.person {
-            Text(state.sinceDate, style: .timer)
-        } else if let gone = state.goneDate {
-            Text(gone, style: .time)
         }
     }
 }

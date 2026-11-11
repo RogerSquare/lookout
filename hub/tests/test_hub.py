@@ -325,6 +325,24 @@ async def push_checks(s, pushes, data_dir):
     end = next((p for p in pushes if p["token"] == act_tok), {}).get("body", {}).get("aps", {})
     check("live activity: ended when they leave", end.get("event") == "end" and end["content-state"]["person"] is False
           and end.get("dismissal-date"), json.dumps(end)[:200])
+    for _ in range(30):
+        if any(p["body"].get("activity_gone") == "photo" for p in pushes):
+            break
+        await asyncio.sleep(0.1)
+    silent = next((p for p in pushes if p["body"].get("activity_gone") == "photo"), {})
+    sh = {k.lower(): v for k, v in silent.get("headers", {}).items()}
+    check("live activity: a silent push wakes the iPhone app to end it too",
+          silent.get("token") == phone and sh.get("apns-push-type") == "background"
+          and silent["body"]["aps"] == {"content-available": 1}, json.dumps(silent.get("body")))
+    pushes.clear()
+    async with s.post(f"{BASE}/api/test", json={"camera": "photo", "seconds": 1}) as r:
+        pass
+    await asyncio.sleep(0.6)
+    async with s.post(f"{BASE}/api/test", json={"camera": "photo", "seconds": 1}) as r:
+        pass
+    await asyncio.sleep(0.6)
+    starts = [p for p in pushes if p["token"] == start_tok and p["body"]["aps"].get("event") == "start"]
+    check("live activity: one at a time (no pile-up while it's showing)", len(starts) == 1, str(len(starts)))
 
 
 async def watch_checks(s, go2rtc_requests):

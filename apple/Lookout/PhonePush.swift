@@ -30,6 +30,16 @@ final class PhoneAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
         }
     }
 
+    /// Silent push from the hub: someone left a door camera, so end its Live Activity now.
+    func application(_ application: UIApplication, didReceiveRemoteNotification info: [AnyHashable: Any],
+                     fetchCompletionHandler done: @escaping (UIBackgroundFetchResult) -> Void) {
+        guard let camera = info["activity_gone"] as? String else { done(.noData); return }
+        Task {
+            await LiveActivities.end(camera: camera)
+            done(.newData)
+        }
+    }
+
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                 withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
         done([.banner, .sound, .list])
