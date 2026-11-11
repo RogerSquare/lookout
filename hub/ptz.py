@@ -47,8 +47,10 @@ class WyzeBridge:
         self.cfg = cfg
         self.http = session
 
-    async def _cmd(self, cmd, payload):
-        url = f"{self.cfg['url']}/api/{quote(self.cfg['camera'])}/{cmd}/{payload}"
+    async def _cmd(self, cmd, payload=None):
+        url = f"{self.cfg['url']}/api/{quote(self.cfg['camera'])}/{cmd}"
+        if payload is not None:
+            url += f"/{payload}"
         params = {"api": self.cfg["api_key"]} if self.cfg.get("api_key") else None
         try:
             async with self.http.get(url, params=params, timeout=aiohttp.ClientTimeout(total=8)) as r:
@@ -71,6 +73,43 @@ class WyzeBridge:
 
     async def preset(self, n):
         return await self._cmd("cruise_point", str(n))
+
+    async def get(self, cmd):
+        """A setting's current value (e.g. "power" -> "on")."""
+        body = await self._cmd(cmd)
+        return body.get("value") if isinstance(body, dict) else None
+
+    async def set(self, cmd, value):
+        return await self._cmd(cmd, value)
+
+    async def presets(self):
+        """Saved positions: [{"pan": degrees, "tilt": degrees}], in the bridge's order (1-based)."""
+        body = await self._cmd("cruise_points")
+        points = body.get("value") if isinstance(body, dict) else None
+        return [{"pan": p.get("horizontal"), "tilt": p.get("vertical")} for p in points or [] if isinstance(p, dict)]
+
+
+async def bridge_cameras(url, api_key, session):
+    """The bridge's cameras: {stream name: {"model", "name", "mac"}}. Raises PTZError."""
+    params = {"api": api_key} if api_key else None
+    try:
+        async with session.get(f"{url.rstrip('/')}/api", params=params, timeout=aiohttp.ClientTimeout(total=8)) as r:
+            if r.status == 401:
+                raise PTZError("The camera bridge refused the API key.")
+            if r.status != 200:
+                raise PTZError(f"The camera bridge answered {r.status}. Is it version 3.x?")
+            body = await r.json(content_type=None)
+    except aiohttp.ClientConnectorError:
+        raise PTZError(f"Can't reach the camera bridge at {url}.")
+    except asyncio.TimeoutError:
+        raise PTZError("The camera bridge didn't answer in time.")
+    except (aiohttp.ClientError, ValueError):
+        raise PTZError("The camera bridge gave an answer Lookout doesn't understand.")
+    cams = (body or {}).get("cameras") if isinstance(body, dict) else None
+    if not isinstance(cams, dict):
+        raise PTZError("That doesn't look like a docker-wyze-bridge 3.x API.")
+    return {name: {"model": c.get("product_model") or "", "name": c.get("nickname") or name, "mac": c.get("mac")}
+            for name, c in cams.items() if isinstance(c, dict)}
 
 
 class PTZ:

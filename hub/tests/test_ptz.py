@@ -23,9 +23,33 @@ def check(name, ok, detail=""):
     results.append(bool(ok))
 
 
+POWER = {"pancam": "on", "fixedcam": "on"}
+
+
 async def fake_bridge(seen):
-    """Answers like docker-wyze-bridge 3.x: GET /api/<cam>/<cmd>/<payload>"""
+    """Answers like docker-wyze-bridge 3.x: GET /api, /api/<cam>/<cmd>[/<payload>]"""
+    def keyed(request):
+        return request.query.get("api") == "k"
+
+    async def listing(request):
+        if not keyed(request):
+            return web.Response(status=401)
+        return web.json_response({"available": 2, "enabled": 2, "total": 2, "cameras": {
+            "pancam": {"product_model": "HL_PAN3", "nickname": "Pan", "mac": "AA"},
+            "fixedcam": {"product_model": "HL_CAM4", "nickname": "Fixed", "mac": "BB"}}})
+
+    async def get(request):
+        cam, what = request.match_info["cam"], request.match_info["cmd"]
+        seen.append((cam, what, None, request.query.get("api")))
+        if what == "power":
+            return web.json_response({"status": "success", "value": POWER.get(cam, "on")})
+        if what == "cruise_points":
+            return web.json_response({"status": "success", "value": [{"horizontal": 177, "vertical": 83}]})
+        return web.json_response({"status": "success", "value": 1})
+
     async def cmd(request):
+        if request.match_info["cmd"] == "power" and request.match_info["cam"] in POWER:
+            POWER[request.match_info["cam"]] = request.match_info["payload"]
         seen.append((request.match_info["cam"], request.match_info["cmd"], request.match_info["payload"],
                      request.query.get("api")))
         if request.match_info["cam"] == "broken":
@@ -33,6 +57,8 @@ async def fake_bridge(seen):
         await asyncio.sleep(0.05)
         return web.json_response({"status": "success", "command": request.match_info["cmd"]})
     app = web.Application()
+    app.router.add_get("/api", listing)
+    app.router.add_get("/api/{cam}/{cmd}", get)
     app.router.add_get("/api/{cam}/{cmd}/{payload}", cmd)
     runner = web.AppRunner(app)
     await runner.setup()
@@ -123,6 +149,72 @@ async def main():
                 pass
             async with s.post(f"{BASE}/api/watch/cameras/gone/ptz", json={"pan": 1}, headers=app) as r:
                 check("bridge down: 502", r.status == 502)
+
+            # ---- the hub's camera bridge: controls for every camera it streams ----
+            for cid, stream in (("pan1", "pancam"), ("fixed", "fixedcam")):
+                async with s.post(f"{BASE}/api/admin/cameras", json={"id": cid, "url": f"rtsp://127.0.0.1:1/{stream}"},
+                                  headers=A) as r:
+                    pass
+            async with s.put(f"{BASE}/api/admin/bridge", json={"url": f"http://127.0.0.1:{BRIDGE}", "api_key": "nope"},
+                             headers=A) as r:
+                check("bridge with a wrong key refused, with the reason", r.status == 400 and "key" in await r.text())
+            async with s.put(f"{BASE}/api/admin/bridge", json={"url": f"http://127.0.0.1:{BRIDGE}/", "api_key": "k"},
+                             headers=A) as r:
+                check("bridge saved", r.status == 200, await r.text())
+            async with s.get(f"{BASE}/api/admin/bridge", headers=A) as r:
+                b = await r.json()
+                check("bridge settings shown, key masked", b["api_key"] == "***" and set(b["bridge_cameras"]) == {"pancam", "fixedcam"})
+            async with s.get(f"{BASE}/api/watch/cameras", headers=app) as r:
+                cams = {c["id"]: c for c in (await r.json())["cameras"]}
+            check("pan camera: sleep, night vision, status light, pan/tilt and presets",
+                  cams["pan1"]["caps"] == ["sleep", "night_vision", "status_light", "ptz", "presets"] and cams["pan1"]["ptz"] is True,
+                  str(cams["pan1"]["caps"]))
+            check("fixed camera: no pan/tilt", cams["fixed"]["caps"] == ["sleep", "night_vision", "status_light"]
+                  and cams["fixed"]["ptz"] is False)
+            check("camera the bridge doesn't have: no controls", cams["kitchen"]["caps"] == [])
+            check("older pan/tilt-only setting still works", cams["bedroom"]["caps"] == ["ptz", "presets"])
+            check("nobody asleep", not any(c["asleep"] for c in cams.values()))
+
+            async with s.post(f"{BASE}/api/watch/cameras/fixed/control", json={"action": "sleep"}, headers=app) as r:
+                check("sleep", r.status == 200 and (await r.json())["asleep"] is True)
+            check("bridge switched it off, with the hub's key", seen[-1] == ("fixedcam", "power", "off", "k"), str(seen[-1]))
+            async with s.get(f"{BASE}/api/watch/cameras", headers=app) as r:
+                check("apps see it asleep", next(c for c in (await r.json())["cameras"] if c["id"] == "fixed")["asleep"] is True)
+            async with s.post(f"{BASE}/api/watch/cameras/fixed/control", json={"action": "wake"}, headers=app) as r:
+                check("a second command right away: busy (409) with a sentence",
+                      r.status == 409 and "moment" in await r.text())
+            await asyncio.sleep(2.1)
+            async with s.post(f"{BASE}/api/watch/cameras/fixed/control", json={"action": "wake"}, headers=app) as r:
+                check("wake", r.status == 200 and (await r.json())["asleep"] is False and seen[-1][1:3] == ("power", "on"))
+            async with s.post(f"{BASE}/api/watch/cameras/pan1/control", json={"action": "night_vision", "value": "auto"},
+                              headers=app) as r:
+                check("night vision auto", r.status == 200 and seen[-1][:3] == ("pancam", "night_vision", "auto"))
+            for body, code, why in (({"action": "explode"}, 400, "unknown action"),
+                                    ({"action": "night_vision", "value": "maybe"}, 400, "bad value")):
+                await asyncio.sleep(2.1)
+                async with s.post(f"{BASE}/api/watch/cameras/pan1/control", json=body, headers=app) as r:
+                    check(f"refused: {why}", r.status == code, str(r.status))
+            async with s.post(f"{BASE}/api/watch/cameras/kitchen/control", json={"action": "sleep"}, headers=app) as r:
+                check("a camera without controls says so (404)", r.status == 404)
+            async with s.post(f"{BASE}/api/watch/cameras/pan1/ptz", json={"pan": 1}, headers=app) as r:
+                check("pan/tilt through the hub's bridge", r.status == 200 and seen[-1][:3] == ("pancam", "rotary_degree", "30,0"))
+            async with s.get(f"{BASE}/api/watch/cameras/pan1/ptz", headers=app) as r:
+                check("saved positions listed", r.status == 200 and (await r.json())["presets"] == [{"pan": 177, "tilt": 83}])
+            async with s.post(f"{BASE}/api/watch/cameras/pan1/ptz", json={"save_preset": 2}, headers=app) as r:
+                check("saving a position: not supported yet, said plainly", r.status == 501 and "Wyze app" in await r.text())
+            await asyncio.sleep(2.1)
+            async with s.post(f"{BASE}/api/admin/cameras/fixed/control", json={"action": "status_light", "value": "off"},
+                              headers=A) as r:
+                check("setup page test button", r.status == 200 and seen[-1][:3] == ("fixedcam", "status_light", "off"))
+
+            POWER["pancam"] = "off"                  # switched off elsewhere (the Wyze app)
+            async with s.get(f"{BASE}/api/admin/bridge?refresh=1", headers=A) as r:
+                check("bridge refresh sees a camera switched off elsewhere", (await r.json())["cameras"]["pan1"]["asleep"] is True)
+            async with s.put(f"{BASE}/api/admin/bridge", json={}, headers=A) as r:
+                check("bridge turned off", r.status == 200)
+            async with s.get(f"{BASE}/api/watch/cameras", headers=app) as r:
+                cams = {c["id"]: c for c in (await r.json())["cameras"]}
+                check("no bridge: no controls, nobody asleep", cams["pan1"]["caps"] == [] and not cams["pan1"]["asleep"])
     finally:
         proc.terminate()
         try:
