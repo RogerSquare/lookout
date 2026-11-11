@@ -262,6 +262,8 @@ class Camera:
             "alerts": self.hub.camera_alerts(self.id),
             "frame": f"{base}/frame.jpg",
             "hls": f"{base}/stream.m3u8" if self.hls_src else None,
+            # stream.m3u8?v=<name> choices besides the default (e.g. "phone", "hd")
+            "hls_variants": sorted(self.hls_variants) if self.hls_src else [],
             "mjpeg": f"{base}/live.mjpeg",
             "ptz": bool(self.cfg.get("ptz")),
         }

@@ -8,6 +8,10 @@ Each camera with a `url` gets these restreams:
     <id>_watch  480 px H.264 with a keyframe every ~0.5 s, made only while someone watches (HLS)
     <id>_phone  640-960 px version of the same for the iPhone
 
+HLS variants an app can pick (stream.m3u8?v=<name>): "phone" (<id>_phone) and "hd" (<id>, the
+camera's own full-resolution stream with its sound, copied rather than re-encoded; the iPhone's
+full-screen player).
+
 Cameras configured the old way (`detect_url` pointing at an external go2rtc) are passed through.
 """
 
@@ -46,7 +50,8 @@ def resolve(cam, rtsp_port, public_host):
         cam["streams"] = {"hd": f"rtsp://{public_host}:{rtsp_port}/{cid}",
                           "sd": f"rtsp://{public_host}:{rtsp_port}/{sd}"}
         cam.setdefault("hls_src", f"{cid}_watch")
-        cam.setdefault("hls_variants", {"phone": f"{cid}_phone"})
+        # Stored variants win; the defaults fill in the rest (cameras saved before "hd" existed get it)
+        cam["hls_variants"] = {"phone": f"{cid}_phone", "hd": cid, **(cam.get("hls_variants") or {})}
     return cam
 
 
