@@ -215,7 +215,7 @@ struct PhoneHome: View {
                     duoModel.reset()             // another camera: drop the last one's picture
                     duoShownID = cam.id
                 }
-                await duoModel.run(cam, client: store.client, width: 1280, transport: .hls(variant: "phone"))
+                await duoModel.run(cam, client: store.client, width: 1280, transport: cam.liveTransport(hls: "phone"))
             }
             .task(id: posture == .phone ? "" : cameras.map(\.id).joined(separator: ",")) {
                 guard posture != .phone else { return }

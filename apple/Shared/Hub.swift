@@ -40,6 +40,13 @@ struct HubCamera: Codable, Identifiable, Equatable {
     var isAsleep: Bool { asleep ?? false }
     var isOnDemand: Bool { onDemand ?? false }
 
+    /// How a big live view gets this camera: HLS video normally; for an on-demand (sleepy)
+    /// camera, frames straight from the hub, which start with the first frame and ride out the
+    /// camera's pauses instead of the player restarting
+    func liveTransport(hls variant: String?) -> LiveTransport {
+        isOnDemand ? .mjpeg(fps: 15) : .hls(variant: variant)
+    }
+
     var lastSeenDate: Date? { lastSeen.flatMap(Self.parse) }
 
     private static func parse(_ s: String) -> Date? {

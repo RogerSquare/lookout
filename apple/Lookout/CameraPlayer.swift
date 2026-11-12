@@ -70,7 +70,7 @@ struct CameraPlayer: View {
                 shownID = cam.id
             }
             model.capturesFrames = true
-            await model.run(cam, client: client, width: 1280, transport: .hls(variant: variant))
+            await model.run(cam, client: client, width: 1280, transport: cam.liveTransport(hls: variant))
         }
         .onAppear {
             PlayerAudio.start(muted: model.muted)
