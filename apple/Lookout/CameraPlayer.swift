@@ -111,8 +111,6 @@ struct CameraPlayer: View {
                 .padding(.vertical, 8)
             pager
                 .frame(width: width, height: width * 9 / 16)
-            pageDots
-                .padding(.top, 10)
             ScrollView {
                 VStack(spacing: 24) {
                     actionButtons
@@ -157,32 +155,18 @@ struct CameraPlayer: View {
             .animation(.easeOut(duration: 0.25), value: controlsShown)
     }
 
-    // MARK: Pager
+    // MARK: Picture
 
-    /// One page per camera. Only the page on screen streams; the others show a still, so a swipe
-    /// lands on a picture straight away.
+    /// Only the camera that was opened: no swiping to the others (go back to the cameras for that).
     private var pager: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 0) {
-                ForEach(cameras) { cam in
-                    Group {
-                        if cam.id == current?.id {
-                            stage(cam)
-                        } else {
-                            StillFrame(camera: cam, client: client)
-                        }
-                    }
-                    .containerRelativeFrame([.horizontal, .vertical])
-                    .clipped()
-                    .id(cam.id)
-                }
+        Group {
+            if let cam = current {
+                stage(cam)
+            } else {
+                Color.black
             }
-            .scrollTargetLayout()
         }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $currentID)
-        .scrollIndicators(.hidden)
-        .scrollDisabled(zoom > 1 || cameras.count < 2 || moveMode)
+        .clipped()
         .background(.black)
     }
 
@@ -245,19 +229,6 @@ struct CameraPlayer: View {
                 .accessibilityElement(children: .combine)
             }
             Spacer()
-        }
-    }
-
-    @ViewBuilder private var pageDots: some View {
-        if cameras.count > 1 {
-            HStack(spacing: 7) {
-                ForEach(cameras) { cam in
-                    Circle()
-                        .fill(cam.id == current?.id ? Color.primary : Color.secondary.opacity(0.4))
-                        .frame(width: 7, height: 7)
-                }
-            }
-            .accessibilityHidden(true)
         }
     }
 
@@ -513,30 +484,6 @@ struct PlayerSurface: View {
                 if model.still == nil && !model.video { ProgressView() }
             }
             .clipped()
-    }
-}
-
-/// A neighbouring camera's page: one still frame, no stream.
-private struct StillFrame: View {
-    let camera: HubCamera
-    let client: HubClient
-    @State private var image: UIImage?
-
-    var body: some View {
-        Color.black
-            .overlay {
-                if let image { Image(uiImage: image).resizable().aspectRatio(contentMode: .fit) }
-            }
-            .task(id: camera.id) {
-                #if DEBUG
-                if Demo.isDemo(camera) {
-                    image = Demo.image(camera)
-                    return
-                }
-                #endif
-                guard camera.connected else { return }
-                if let data = try? await client.frame(camera, width: 640) { image = UIImage(data: data) }
-            }
     }
 }
 
