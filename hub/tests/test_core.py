@@ -170,6 +170,23 @@ async def fresh_install():
             async with s.get(f"{BASE}/api/cameras/solar/snapshot.jpg") as r:
                 check("with the camera's snapshot", (await r.read()).startswith(b"\xff\xd8WYZE"))
             gone = await next_event(events, lambda e: e["type"] == "person_gone" and e["camera"] == "solar", 25)
+            st0 = json.loads((data / "settings.json").read_text())
+            if st0.get("app_token"):
+                hdr = {"Authorization": "Bearer " + st0["app_token"]}
+                # Point it at the test camera's stream: the live view starts reading it, then stops
+                async with s.get(f"{BASE}/api/admin/config", headers=A) as r:
+                    porch_url = next(c["url"] for c in (await r.json())["cameras"] if c["id"] == "porch")
+                async with s.put(f"{BASE}/api/admin/cameras/solar", headers=A, json={
+                        "name": "Solar", "on_demand": True, "url": porch_url}) as r:
+                    pass
+                got = b""
+                async with s.get(f"{BASE}/api/watch/cameras/solar/live.mjpeg?fps=5&w=320", headers=hdr,
+                                 timeout=aiohttp.ClientTimeout(total=40)) as r:
+                    t_open = time.monotonic()
+                    while time.monotonic() - t_open < 30 and got.count(b"--frame") < 3:
+                        got += await r.content.read(65536)
+                check("on-demand camera: live frames start when someone watches", got.count(b"--frame") >= 3,
+                      f"{got.count(b'--frame')} frames in {time.monotonic() - t_open:.1f}s")
             check("and clears when no new event comes", gone is not None)
             await ev_runner.cleanup()
             await asyncio.sleep(2)

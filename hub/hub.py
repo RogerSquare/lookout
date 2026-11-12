@@ -233,9 +233,13 @@ class Camera:
         # for detection, so it isn't kept awake, and it's never reported offline
         self.on_demand = bool(cfg.get("on_demand"))
 
+    VIEW_GRACE = 30           # an on-demand camera is read this long after its last viewer
+
     def start(self):
         if self.on_demand:
             self.connected = True
+            self._view_until = 0.0
+            self._reader = None
             return
         threading.Thread(target=self._read_loop, name=f"read-{self.id}", daemon=True).start()
         threading.Thread(target=self._detect_loop, name=f"detect-{self.id}", daemon=True).start()
@@ -288,9 +292,21 @@ class Camera:
             self.connected = connected
             self.hub.publish_threadsafe({"type": "camera_status", "camera": self.id, "connected": connected})
 
+    def want_live(self):
+        """Someone is watching an on-demand camera: read it (only now, and for VIEW_GRACE
+        seconds after), so its frames reach the live view. Called on each frame sent."""
+        self._view_until = time.time() + self.VIEW_GRACE
+        if self._reader is None or not self._reader.is_alive():
+            self._reader = threading.Thread(target=self._read_loop, name=f"read-{self.id}", daemon=True)
+            self._reader.start()
+            log.info("%s: someone is watching; reading it", self.id)
+
+    def _watched(self):
+        return not self.on_demand or time.time() < self._view_until
+
     def _read_loop(self):
         backoff = 1   # a camera added with go2rtc restarting gets refused once; retry soon
-        while not self._stop.is_set():
+        while not self._stop.is_set() and self._watched():
             try:
                 # Low-latency options for live streams only; they make file sources decode nothing
                 options = ({"rtsp_transport": "tcp", "fflags": "nobuffer", "flags": "low_delay"}
@@ -305,6 +321,9 @@ class Camera:
                     for frame in container.decode(stream):
                         if self._stop.is_set():
                             return
+                        if not self._watched():
+                            log.info("%s: nobody watching; stopped reading", self.id)
+                            return
                         self.latest = frame
                         self.latest_time = time.time()
                         if self.loop:
@@ -315,7 +334,8 @@ class Camera:
                 log.warning("%s: stream ended", self.id)
             except Exception as e:  # network drops, camera reboots, bad URL
                 log.warning("%s: stream error: %s", self.id, e)
-            self._set_connected(False)
+            if not self.on_demand:          # an on-demand camera is "there" even while it sleeps
+                self._set_connected(False)
             self._stop.wait(backoff)
             backoff = min(backoff * 2, 30)
 
@@ -2106,6 +2126,8 @@ class Hub:
     async def watch_frame(self, request):
         cam = self._camera(request)
         frame = cam.latest
+        if cam.on_demand and frame is not None and time.time() - cam.latest_time > 10:
+            frame = None                     # an old frame from the last viewing: the thumbnail is newer
         if frame is None and cam.on_demand:
             # Nothing is read from it until someone watches; its still comes from elsewhere
             # (thumbnail_url: the newest picture its service has), never by waking it
@@ -2188,6 +2210,8 @@ class Hub:
         try:
             while True:
                 started = loop.time()
+                if cam.on_demand:
+                    cam.want_live()
                 frame = cam.latest
                 if frame is not None and frame is not last:
                     last = frame

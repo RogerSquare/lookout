@@ -215,7 +215,7 @@ struct CameraSettingsView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     LiveCameraView(camera: cam, client: store.client, frameWidth: 800,
-                                   transport: .hls(variant: "phone"))
+                                   transport: cam.liveTransport(hls: "phone"))
                         .aspectRatio(16 / 9, contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                         .overlay(alignment: .bottomLeading) {
