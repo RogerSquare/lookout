@@ -44,7 +44,8 @@ struct HubCamera: Codable, Identifiable, Equatable {
     /// camera, frames straight from the hub, which start with the first frame and ride out the
     /// camera's pauses instead of the player restarting
     func liveTransport(hls variant: String?) -> LiveTransport {
-        isOnDemand ? .mjpeg(fps: 15) : .hls(variant: variant)
+        // Away (LTE), fewer frames: JPEG frames cost far more data than the camera's own video
+        isOnDemand ? .mjpeg(fps: HubRoute.isHome ? 15 : 8) : .hls(variant: variant)
     }
 
     var lastSeenDate: Date? { lastSeen.flatMap(Self.parse) }
